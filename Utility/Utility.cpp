@@ -30,7 +30,7 @@ int Utility::getListenFd(const uint16_t &port)
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, static_cast<const void*>(&optVal), sizeof(int));
     sockaddr_in address{0};
     address.sin_family = AF_INET;
-    address.sin_addr.s_addr = htonl(INADDR_ANY);
+    address.sin_addr.s_addr = htonl(INADDR_ANY); //take your ip 
     address.sin_port = htons(port);
     if(bind(fd, reinterpret_cast<const sockaddr *>(&address), sizeof(address)) == -1)
     {
