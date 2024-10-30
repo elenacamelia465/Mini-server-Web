@@ -1,0 +1,2 @@
+## Clasa Config
+    Clasa Config centralizeaza setarile de configurare pentru serverul web. Aceasta defineste portul de ascultare al serverului, care are valoarea implicita de 8086 si numarul de thread-uri din pool care este setat la 5, initial. De asememea, clasa include constante pentru dimensiunea bufferelor de trimitere si primire si pentru numarul maxim de evenimente epoll. Variabila **timeoutSecond** stabileste durata de timeout pentru conexiuni, iar functia **parseArgs** permite configurarea portului si a numarului de thread-uri direct din linia de comanda
