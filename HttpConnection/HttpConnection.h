@@ -18,10 +18,12 @@ class HttpConnection
         unsigned long recvIndex;
         char sendBuf[Config::sendRecvBufSize];
         unsigned long sendIndex;
-        int webRoot;
+        std::string webRoot;
         void handleRead();
         void handleWrite();
         bool isKeepAlive = false;
+        void loadHtmlFile(const std::string &filename);
+        std::string getRequestedPage();
 
     public:
         HttpConnection();
