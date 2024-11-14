@@ -6,6 +6,12 @@
 #include <sys/epoll.h>
 #include <cstring>
 #include "../Config/Config.h"
+#include <filesystem>
+
+
+//------ADAUGARE GESTIONARE TIPURI DE CERERI
+#include "../file_types.h"
+#include <sys/stat.h> 
 
 class HttpConnection
 {
@@ -23,7 +29,18 @@ class HttpConnection
         void handleWrite();
         bool isKeepAlive = false;
         void loadHtmlFile(const std::string &filename);
+        
+
+
+        //AGAUDARE POSIBILITATE DE GESTIONARE TIPURI DE CERERI
+        void handleHead();
+        void handlePost();
+        void handlePut();
+        void handleDelete();
         std::string getRequestedPage();
+        void handleGet();
+        void handleWriteLargeResponse(int fileFd);
+        const char* get_file_type(char* filename);
 
     public:
         HttpConnection();

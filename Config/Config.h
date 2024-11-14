@@ -5,6 +5,7 @@
 #include <getopt.h>
 #include <cstdint>
 #include <string>
+#define DATA_LENGTH 1024 
 
 
 class Config
