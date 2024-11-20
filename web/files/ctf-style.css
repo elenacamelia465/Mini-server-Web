@@ -1,0 +1,128 @@
+/* Resetare stiluri implicite */
+body, h1, h2, h3, p, ul, li, a, table, th, td {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Stil general pentru corpul paginii */
+body {
+    font-family: 'Roboto', sans-serif;
+    font-size: 16px;
+    background-color: #121212; /* Fundal întunecat pentru temă CTF */
+    color: #ffffff; /* Text alb */
+    line-height: 1.5;
+}
+
+/* Stil antet */
+header {
+    background-color: #1e1e2f; /* Fundal mai închis */
+    padding: 20px;
+    text-align: center;
+    border-bottom: 2px solid #0078ff;
+}
+
+header h1 {
+    font-size: 2.5rem;
+    color: #00d9ff; /* Albastru vibrant */
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+/* Stil navigație */
+nav {
+    background-color: #232323;
+    padding: 10px;
+    text-align: center;
+}
+
+nav a {
+    color: #ffffff;
+    text-decoration: none;
+    margin: 0 15px;
+    font-size: 1rem;
+    transition: color 0.3s ease;
+}
+
+nav a:hover {
+    color: #00d9ff;
+}
+
+/* Stil pentru secțiunea principală */
+main {
+    padding: 20px;
+    max-width: 1200px;
+    margin: 20px auto;
+}
+
+/* Stil secțiune probleme */
+.problem-section {
+    margin-bottom: 30px;
+}
+
+.problem-section h2 {
+    color: #00d9ff;
+    margin-bottom: 10px;
+    font-size: 1.8rem;
+    border-bottom: 2px solid #0078ff;
+    padding-bottom: 5px;
+}
+
+.problem-section p {
+    color: #cccccc;
+    margin-bottom: 15px;
+}
+
+/* Stil tabel clasament */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    background-color: #1e1e2f;
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+table th, table td {
+    padding: 10px 15px;
+    text-align: left;
+    color: #ffffff;
+}
+
+table th {
+    background-color: #0078ff;
+    font-weight: bold;
+}
+
+table tr:nth-child(even) {
+    background-color: #292929;
+}
+
+table tr:hover {
+    background-color: #0078ff;
+    color: #ffffff;
+}
+
+/* Stil buton */
+button {
+    background-color: #0078ff;
+    color: #ffffff;
+    border: none;
+    padding: 10px 20px;
+    font-size: 1rem;
+    cursor: pointer;
+    border-radius: 5px;
+    transition: background-color 0.3s ease;
+}
+
+button:hover {
+    background-color: #005bb5;
+}
+
+/* Stil footer */
+footer {
+    background-color: #232323;
+    color: #cccccc;
+    text-align: center;
+    padding: 10px;
+    margin-top: 20px;
+}

@@ -15,7 +15,9 @@ class Config
         static constexpr unsigned int maxEpollWaitEvent=10000;
         static constexpr unsigned int sendRecvBufSize=10240;
         static unsigned short threadPoolNumWorkers;
-        static constexpr unsigned short timeoutSecond = 20;
+
+        static constexpr unsigned short defaultTimeoutSecond = 20;
+        static unsigned short timeoutSecond; //pentru -t option 
         static const std::string webRoot;
         static uint16_t webServerPort;
         static bool isHttpsEnabled; //pentru https

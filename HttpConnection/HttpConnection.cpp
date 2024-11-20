@@ -381,7 +381,7 @@ void HttpConnection::handleDelete() {
     }
 }
 
-void HttpConnection::handleGet() {
+void HttpConnection::handleGet() {  //aici nu merge sa descarcam documentele prin https TO DO! 
 
    std::string request(recvBuf);
 

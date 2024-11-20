@@ -94,7 +94,8 @@ void WebServer::handleComingConnection() {
         if (clientFd == -1) {
             break;
         }
-
+        //preluare ip folosim biblioteca inet.h
+        std::cout << "Noua conexiune de la: "<< inet_ntoa(clientAddr.sin_addr)<< ":"<<ntohs(clientAddr.sin_port)<<std::endl;
         if (Config::isHttpsEnabled) 
         {
             SSL *ssl = SSL_new(sslCtx);
