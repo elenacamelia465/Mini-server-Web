@@ -1,9 +1,31 @@
 #include "WebServer.h"
 
+SSL_CTX *sslCtx = nullptr;
+
 WebServer::WebServer(const uint16_t &port, const unsigned short &numWorkers, std::string webRoot)
-        : port(port), webRoot(std::move(webRoot)), httpConnections(Config::maxConnectFd),
-          threadPool(numWorkers), epollFd(epoll_create(2000)), listenFd(0), events{}, pipeFd{} 
-{
+    : port(port), webRoot(std::move(webRoot)), httpConnections(Config::maxConnectFd),
+      threadPool(numWorkers), epollFd(epoll_create(2000)), listenFd(0), events{}, pipeFd{} {
+
+    if (Config::isHttpsEnabled) {
+        //initializare OpenSSL
+        SSL_library_init();
+        OpenSSL_add_all_algorithms();
+        SSL_load_error_strings();
+        sslCtx = SSL_CTX_new(SSLv23_server_method());
+        if (!sslCtx) {
+            ERR_print_errors_fp(stderr);
+            exit(EXIT_FAILURE);
+        }
+
+        //incarcare cheia privata si certificat
+       if (SSL_CTX_use_certificate_file(sslCtx, "./certs/cert.pem", SSL_FILETYPE_PEM) <= 0 || SSL_CTX_use_PrivateKey_file(sslCtx, "./certs/key.pem", SSL_FILETYPE_PEM) <= 0) 
+        {
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+        }
+
+    }
+
     listenFd = Utility::getListenFd(port);
     Utility::addFdToEpoll(epollFd, listenFd, false);
     pipe2(pipeFd, O_NONBLOCK);
@@ -16,7 +38,7 @@ WebServer::WebServer(const uint16_t &port, const unsigned short &numWorkers, std
     alarm(Config::timeoutSecond);
 }
 
-WebServer::~WebServer() = default;
+//WebServer::~WebServer() = default;
 
 void WebServer::eventLoop() 
 {
@@ -62,8 +84,7 @@ void WebServer::handleCloseOrError(const int &fd)
     httpConnections[fd].closeConnection();
 }
 
-void WebServer::handleComingConnection()
-{
+void WebServer::handleComingConnection() {
     sockaddr_in clientAddr{0};
     socklen_t addrLen = sizeof(clientAddr);
     while (true) {
@@ -73,7 +94,26 @@ void WebServer::handleComingConnection()
         if (clientFd == -1) {
             break;
         }
-        httpConnections[clientFd].init(epollFd, clientFd);
+
+        if (Config::isHttpsEnabled) 
+        {
+            SSL *ssl = SSL_new(sslCtx);
+            SSL_set_fd(ssl, clientFd);
+            if (SSL_accept(ssl) <= 0) 
+            {
+                ERR_print_errors_fp(stderr);
+                SSL_free(ssl);
+                close(clientFd);
+                continue;
+            }
+            httpConnections[clientFd].init(epollFd, clientFd, ssl);
+        } 
+        else 
+        {
+            SSL *ssl = nullptr;
+            httpConnections[clientFd].init(epollFd, clientFd, ssl);
+        }
+
         Utility::timeList.attachTimer(&httpConnections[clientFd]);
         Utility::addFdToEpoll(epollFd, clientFd);
     }
@@ -108,5 +148,12 @@ void WebServer::handleSignal()
     } else if (buf == SIGINT) {
         std::cout << "SIGINT" << std::endl;
         Utility::stop = true;
+    }
+}
+WebServer::~WebServer() 
+{
+    if (sslCtx) 
+    {
+        SSL_CTX_free(sslCtx);
     }
 }

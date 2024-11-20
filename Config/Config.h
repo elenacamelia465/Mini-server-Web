@@ -18,6 +18,7 @@ class Config
         static constexpr unsigned short timeoutSecond = 20;
         static const std::string webRoot;
         static uint16_t webServerPort;
+        static bool isHttpsEnabled; //pentru https
 
         Config();
         virtual ~Config();

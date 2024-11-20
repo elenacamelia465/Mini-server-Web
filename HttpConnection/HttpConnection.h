@@ -12,11 +12,14 @@
 //------ADAUGARE GESTIONARE TIPURI DE CERERI
 #include "../file_types.h"
 #include <sys/stat.h> 
+#include <openssl/ssl.h>
 
 class HttpConnection
 {
     private:
         //epoll instance is used for managing events related to this connection
+        
+        SSL *ssl = nullptr;
         int epollFd;
         int fd;
         bool isReadEvent;
@@ -47,7 +50,7 @@ class HttpConnection
         virtual ~HttpConnection();
         void closeConnection() const;
         void handleRequest();
-        void init(const int &epollFd, const int &fd);
+        void init(const int &epollFd, const int &fd,SSL *ssl ); //initializare cu ssl
         void setEvent(const bool &isReadEvent);
         int getFd() const;
 };

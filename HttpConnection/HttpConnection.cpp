@@ -127,8 +127,15 @@ std::string HttpConnection::getRequestedPage() {
 //MODIFICARE FUNCTIE PENTRU A SUPORTA GESTIONAREA TIPURILOR DE CERERI
 void HttpConnection::handleRead()
 {
-    
-    ssize_t ret = recv(fd, recvBuf + recvIndex, Config::sendRecvBufSize - recvIndex, 0);
+     ssize_t ret;
+    if (ssl) //verificare pt htts
+    {
+        ret = SSL_read(ssl, recvBuf + recvIndex, Config::sendRecvBufSize - recvIndex);
+    } 
+    else 
+    {
+        ret = recv(fd, recvBuf + recvIndex, Config::sendRecvBufSize - recvIndex, 0);
+    }
     if (ret <= 0) {
         return; 
     }
@@ -181,7 +188,14 @@ void HttpConnection::handleWrite()
     ssize_t ret = 0;
     while (sendIndex < len)
     {
-        ret = send(fd, sendBuf + sendIndex, len - sendIndex, 0);
+        if (ssl) 
+        {
+            ret = SSL_write(ssl, sendBuf + sendIndex, len - sendIndex);
+        } 
+        else 
+        {
+            ret = send(fd, sendBuf + sendIndex, len - sendIndex, 0);
+        }
         if (ret == -1)
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -209,6 +223,12 @@ void HttpConnection::handleWrite()
         {
             std::unique_lock<std::mutex> locker(Utility::mutex);
             close(fd);
+            if (ssl) 
+            {
+                SSL_shutdown(ssl);
+                SSL_free(ssl);
+                ssl = nullptr;
+            }
             locker.unlock();
         }
     }
@@ -221,10 +241,11 @@ void HttpConnection::handleWrite()
     }
 }
 
-void HttpConnection::init(const int &epollFd, const int &fd)
+void HttpConnection::init(const int &epollFd, const int &fd, SSL *ssl) //!!!
 {
     this->epollFd = epollFd;
     this->fd = fd;
+    this->ssl = ssl;
 }
 
 void HttpConnection::setEvent(const bool &isReadEvent)
