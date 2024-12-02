@@ -2,10 +2,10 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
-#include <string>
+#include <zlib.h>
+#include <nlohmann/json.hpp>
 #include "HttpConnection.h"
 #include "../Utility/Utility.h"
-
 
 
 HttpConnection::HttpConnection()
@@ -25,7 +25,7 @@ void HttpConnection::closeConnection() const
 void HttpConnection::loadHtmlFile(const std::string &filename)
 {
     std::string fullPath = webRoot + filename;
-    std::cout << "Încerc să deschid fișierul: " << fullPath << std::endl; // Linia de debug
+    std::cout << "Încerc să deschid fișierul: " << fullPath << std::endl; 
 
     std::ifstream file(fullPath);
     if (file)
@@ -53,32 +53,6 @@ void HttpConnection::loadHtmlFile(const std::string &filename)
     }
 }
 
-
-// //Functie pentru a identifica pagina HTML solicitata pe baza cererii
-// std::string HttpConnection::getRequestedPage()
-// {
-//     std::string request(recvBuf);
-//     std::string page = "index.html"; //pagina implicita
-
-//     size_t pos = request.find("GET ");
-//     if (pos != std::string::npos)
-//     {
-//         size_t endPos = request.find(" ", pos + 4);
-//         if (endPos != std::string::npos)
-//         {
-//             std::string requestedFile = request.substr(pos + 4, endPos - pos - 4);
-//             if (requestedFile == "/")
-//             {
-//                 page = "index.html"; //Se returneaza index.html pentru radacina
-//             }
-//             else
-//             {
-//                 page = requestedFile.substr(1); //elimina '/' de la inceput
-//             }
-//         }
-//     }
-//     return page;
-// }
 
 
 //MODIFICARE FUNCTIE PENTRU A SUPORTA GESTIONAREA TIPURILOR DE CERERI
@@ -123,11 +97,11 @@ std::string HttpConnection::getRequestedPage() {
     return url;
 }
 
-
+//!!!!Modificata pentru a gestiona si compresie!!!
 //MODIFICARE FUNCTIE PENTRU A SUPORTA GESTIONAREA TIPURILOR DE CERERI
 void HttpConnection::handleRead()
 {
-     ssize_t ret;
+    ssize_t ret;
     if (ssl) //verificare pt htts
     {
         ret = SSL_read(ssl, recvBuf + recvIndex, Config::sendRecvBufSize - recvIndex);
@@ -141,20 +115,26 @@ void HttpConnection::handleRead()
     }
     recvIndex += ret;
 
-    if (strstr(recvBuf, "\r\n\r\n") != nullptr) {
-        recvBuf[recvIndex] = '\0';
-        std::string request(recvBuf);
+    HttpRequest request;
+    if (!request.parse(recvBuf, recvIndex)) {
+        strncpy(sendBuf, ERROR, sizeof(sendBuf) - 1);
+        sendBuf[sizeof(sendBuf) - 1] = '\0';
+        return;
+    }
+    // if (strstr(recvBuf, "\r\n\r\n") != nullptr) {
+    //     recvBuf[recvIndex] = '\0';
+    //     std::string request(recvBuf);
 
-        if (request.find("GET") == 0) {
-            handleGet();
-        } else if (request.find("POST") == 0) {
-            handlePost();
-        } else if (request.find("PUT") == 0) {
-            handlePut();
-        } else if (request.find("DELETE") == 0) {
-            handleDelete();
-        } else if (request.find("HEAD") == 0) {
-            handleHead();
+        if (request.method == "GET") {
+            handleGet(request);
+        } else if (request.method == "POST") {
+            handlePost(request);
+        } else if (request.method == "PUT") {
+            handlePut(request);
+        } else if (request.method == "DELETE") {
+            handleDelete(request);
+        } else if (request.method == "HEAD") {
+            handleHead(request);
         } else {
             strncpy(sendBuf, ERROR, sizeof(sendBuf) - 1);
             sendBuf[sizeof(sendBuf) - 1] = '\0';
@@ -164,7 +144,7 @@ void HttpConnection::handleRead()
         event.events = EPOLLOUT | EPOLLONESHOT | EPOLLRDHUP;
         event.data.fd = fd;
         epoll_ctl(epollFd, EPOLL_CTL_MOD, fd, &event);
-    }
+    //}
 }
 
 void HttpConnection::handleRequest()
@@ -260,21 +240,28 @@ int HttpConnection::getFd() const
 
 
 //ADAUGARE PENTRU GESTIONAREA TIPURILOR DE CERERI
-void HttpConnection::handleHead()
+void HttpConnection::handleHead(HttpRequest request)
 {
-    std::string page = getRequestedPage();
-    std::string fullPath = webRoot + page;
+    std::string fullPath = webRoot + request.uri;
 
     struct stat fileStat;
     if(stat(fullPath.c_str(), &fileStat) == -1)
     {
-        strncpy(sendBuf, ERROR, sizeof(sendBuf) - 1);
+        strncpy(sendBuf, RESPONSE_NOT_FOUND, sizeof(sendBuf) - 1);
         sendBuf[sizeof(sendBuf)-1]='\0';
     }
     else{
-         snprintf(sendBuf, sizeof(sendBuf),
+        std::string contentType = getContentType(fullPath);
+        char timeBuf[100];
+        struct tm tm;
+        gmtime_r(&fileStat.st_mtime, &tm);
+        strftime(timeBuf, sizeof(timeBuf), "%a, %d %b %Y %H:%M:%S GMT", &tm);
+        const char* connectionState = isKeepAlive ? "keep-alive" : "close";
+        
+        snprintf(sendBuf, sizeof(sendBuf),
                  HEAD_SUCCESS,
-                 fileStat.st_size);
+                 fileStat.st_size, contentType.c_str(), timeBuf, connectionState);
+        
     }
     epoll_event event{};
     event.events = EPOLLOUT | EPOLLONESHOT | EPOLLRDHUP;
@@ -283,111 +270,550 @@ void HttpConnection::handleHead()
 }
 
 
+std::string HttpConnection::getContentType(const std::string& filePath) {
+    // Mapare între extensii și tipuri MIME
+    static const std::unordered_map<std::string, std::string> mimeTypes = {
+        {".html", "text/html"},
+        {".htm", "text/html"},
+        {".css", "text/css"},
+        {".js", "application/javascript"},
+        {".json", "application/json"},
+        {".jpg", "image/jpeg"},
+        {".jpeg", "image/jpeg"},
+        {".png", "image/png"},
+        {".gif", "image/gif"},
+        {".svg", "image/svg+xml"},
+        {".ico", "image/x-icon"},
+        {".pdf", "application/pdf"},
+        {".txt", "text/plain"},
+    };
 
+    size_t dotPos = filePath.rfind('.');
+    if (dotPos != std::string::npos) {
+        std::string extension = filePath.substr(dotPos);
+        auto it = mimeTypes.find(extension);
+        if (it != mimeTypes.end()) {
+            return it->second;
+        }
+    }
+    return "application/octet-stream";
+}
 
-void HttpConnection::handlePost()
-{
+//-----------POST----------------
+
+bool HttpConnection::isValidUsername(const std::string& username) {
+    if (username.empty()) {
+        return false;
+    }
+
+    return std::all_of(username.begin(), username.end(), [](char c) {
+        return std::isalnum(static_cast<unsigned char>(c));
+    });
+}
+
+bool HttpConnection::isValidPassword(const std::string& password) {
+    if (password.empty()) {
+        return false;
+    }
+
+    if (password.length() < 6) {
+        return false;
+    }
+
+    bool hasLetter = false;
+    bool hasDigit = false;
+    for (char c : password) {
+        if (std::isalpha(static_cast<unsigned char>(c))) {
+            hasLetter = true;
+        }
+        if (std::isdigit(static_cast<unsigned char>(c))) {
+            hasDigit = true;
+        }
+    }
+    return hasLetter && hasDigit;
+}
+
+std::unordered_map<std::string, std::string> userDatabase = {
+    {"admin", "admin123"},
+    {"user", "user456"}
+};
+
+bool HttpConnection::authenticateUser(const std::string& username, const std::string& password) {
+    auto it = userDatabase.find(username);
+    if (it != userDatabase.end() && it->second == password) {
+        return true;
+    }
+    return false;
+}
+
+std::string HttpConnection::urlDecode(const std::string& str) {
+    std::string decoded;
+    char ch;
+    int i, ii;
+    for (i = 0; i < str.length(); i++) {
+        if (int(str[i]) == 37) {
+            sscanf(str.substr(i + 1, 2).c_str(), "%x", &ii);
+            ch = static_cast<char>(ii);
+            decoded += ch;
+            i = i + 2;
+        } else {
+            decoded += str[i];
+        }
+    }
+    return decoded;
+}
+
+std::unordered_map<std::string, std::string> HttpConnection::parseFormData(const std::string& body) {
+    std::unordered_map<std::string, std::string> formData;
+    std::istringstream stream(body);
+    std::string pair;
+
+    while (std::getline(stream, pair, '&')) {
+        size_t pos = pair.find('=');
+        if (pos != std::string::npos) {
+            std::string key = pair.substr(0, pos);
+            std::string value = pair.substr(pos + 1);
+
+            
+            key = urlDecode(key);
+            value = urlDecode(value);
+
+            formData[key] = value;
+        }
+    }
+    return formData;
+}
+
+std::string HttpConnection::compressStringGzip(const std::string& str) {
+    if (str.empty()) {
+        return std::string();
+    }
+
+    z_stream zs;
+    zs.zalloc = Z_NULL;
+    zs.zfree = Z_NULL;
+    zs.opaque = Z_NULL;
+
+   
+    int ret = deflateInit2(&zs, Z_BEST_COMPRESSION, Z_DEFLATED, 15 | 16, 8, Z_DEFAULT_STRATEGY);
+    if (ret != Z_OK) {
+        throw std::runtime_error("deflateInit2 failed with error code: " + std::to_string(ret));
+    }
+
+    zs.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(str.data()));
+    zs.avail_in = static_cast<uInt>(str.size());
+
+    const size_t bufferSize = 32768;
+    char outbuffer[bufferSize];
+    std::string outstring;
+
+  
+    do {
+        zs.next_out = reinterpret_cast<Bytef*>(outbuffer);
+        zs.avail_out = static_cast<uInt>(bufferSize);
+
+        ret = deflate(&zs, Z_FINISH);
+
+        if (outstring.size() < zs.total_out) {
+            outstring.append(outbuffer, zs.total_out - outstring.size());
+        }
+    } while (ret == Z_OK);
+
+    deflateEnd(&zs);
+
+    if (ret != Z_STREAM_END) {
+        throw std::runtime_error("Exception during zlib compression: " + std::to_string(ret));
+    }
+
+    return outstring;
+}
+
+std::string generateSimpleToken(const std::string& username) {
+    return username + "_" + std::to_string(std::time(nullptr));
+}
+
+void saveTokenToFile(const std::string& token, const std::string& username) {
+    std::ofstream file(Config::webRoot + "/tokens.txt", std::ios::app); 
+    if (file.is_open()) {
+        file << token << "," << username << "\n"; 
+        file.close();
+    } else {
+        std::cerr << "Error: Unable to open tokens.txt for writing." << std::endl;
+    }
+}
+
+void HttpConnection::handlePost(HttpRequest request) {
+    std::string responseBody;
+    std::string body = request.body;
+
     
-     std::string request(recvBuf);
-    size_t bodyStart = request.find("\r\n\r\n");
-    if (bodyStart == std::string::npos) {
-        strncpy(sendBuf, ERROR, sizeof(sendBuf) - 1);
+    std::cout << "DEBUG: Request Body: " << body << std::endl;
+
+    std::string contentType = request.getHeader("Content-Type");
+
+    
+    std::cout << "DEBUG: Content-Type: " << contentType << std::endl;
+
+    if (contentType.empty()) {
+        
+        const char* badRequestResponse =
+            "HTTP/1.1 400 Bad Request\r\n"
+            "Content-Length: 0\r\n"
+            "Connection: close\r\n"
+            "\r\n";
+        strncpy(sendBuf, badRequestResponse, sizeof(sendBuf) - 1);
         sendBuf[sizeof(sendBuf) - 1] = '\0';
         return;
     }
 
-    std::string body = request.substr(bodyStart + 4);
+    if (contentType == "application/x-www-form-urlencoded") {
+        
+        std::unordered_map<std::string, std::string> formData = parseFormData(body);
+        std::string username = formData["username"];
+        std::string password = formData["password"];
 
-    std::string username, password;
-    size_t usernamePos = body.find("username=");
-    size_t passwordPos = body.find("password=");
-    if (usernamePos != std::string::npos && passwordPos != std::string::npos) {
-        username = body.substr(usernamePos + 9, body.find("&", usernamePos) - (usernamePos + 9));
-        password = body.substr(passwordPos + 9);
-    }
+        
+        std::cout << "DEBUG: Username: " << username << ", Password: " << password << std::endl;
 
-    std::string response;
-    if (username == "admin" && password == "admin") {
-        response = LOGIN_SUCCESS + username + "!</p></body></html>";
+        bool validUsername = isValidUsername(username);
+        bool validPassword = isValidPassword(password);
+
+       
+        std::cout << "DEBUG: Valid Username: " << validUsername << ", Valid Password: " << validPassword << std::endl;
+
+        if (validUsername && validPassword) {
+            if (authenticateUser(username, password)) {
+                
+                std::cout << "DEBUG: Authentication successful" << std::endl;
+
+                std::string token = generateSimpleToken(username);
+                saveTokenToFile(token, username);
+
+                std::string redirectResponse =
+                    "HTTP/1.1 303 See Other\r\n"
+                    "Location: /welcome.php?token=" + token + "\r\n"
+                    "Content-Length: 0\r\n"
+                    "Connection: close\r\n"
+                    "\r\n";
+
+                strncpy(sendBuf, redirectResponse.c_str(), sizeof(sendBuf) - 1);
+                sendBuf[sizeof(sendBuf) - 1] = '\0';
+                return;
+            } else {
+                
+                responseBody = "<html><body><p>Login failed. Invalid username or password.</p></body></html>";
+            }
+        } else {
+            
+            responseBody = "<html><body><p>Invalid input.</p></body></html>";
+        }
+    } else if (contentType == "application/json") {
+        try {
+            auto jsonData = nlohmann::json::parse(body);
+            std::string username = jsonData["username"];
+            std::string password = jsonData["password"];
+
+            
+            std::cout << "DEBUG: JSON Username: " << username << ", JSON Password: " << password << std::endl;
+
+            if (isValidUsername(username) && isValidPassword(password)) {
+                if (authenticateUser(username, password)) {
+                  
+                    std::string token = generateSimpleToken(username);
+                    saveTokenToFile(token, username);
+
+                    std::string redirectResponse =
+                        "HTTP/1.1 303 See Other\r\n"
+                        "Location: /welcome.php?token=" + token + "\r\n"
+                        "Content-Length: 0\r\n"
+                        "Connection: close\r\n"
+                        "\r\n";
+
+                    strncpy(sendBuf, redirectResponse.c_str(), sizeof(sendBuf) - 1);
+                    sendBuf[sizeof(sendBuf) - 1] = '\0';
+                    return;
+                } else {
+                    responseBody = "<html><body><p>Login failed. Invalid username or password.</p></body></html>";
+                }
+            } else {
+                responseBody = "<html><body><p>Invalid input.</p></body></html>";
+            }
+        } catch (const nlohmann::json::parse_error& e) {
+            
+            responseBody = "<html><body><p>Bad Request: JSON parsing error.</p></body></html>";
+        }
     } else {
-        response =  LOGIN_FAILED;
+        
+        responseBody = "<html><body><p>Unsupported Media Type.</p></body></html>";
     }
+
+   
+    std::string acceptEncoding = request.getHeader("Accept-Encoding");
+    bool clientAcceptsGzip = acceptEncoding.find("gzip") != std::string::npos;
+
+    std::string responseBodyToSend = responseBody;
+    std::string contentEncodingHeader;
+
+    if (clientAcceptsGzip) {
+        responseBodyToSend = compressStringGzip(responseBody);
+        contentEncodingHeader = "Content-Encoding: gzip\r\n";
+    }
+
+    std::string statusCode = "200 OK";
+
+    std::string response =
+        "HTTP/1.1 " + statusCode + "\r\n"
+        "Content-Type: text/html\r\n" +
+        contentEncodingHeader +
+        "Content-Length: " + std::to_string(responseBodyToSend.size()) + "\r\n"
+        "Connection: close\r\n"
+        "\r\n" +
+        responseBodyToSend;
+
+    std::cout << "DEBUG: Response Body Size: " << responseBodyToSend.size() << std::endl;
+    std::cout << "DEBUG: Response Body: " << responseBody << std::endl;
 
     strncpy(sendBuf, response.c_str(), sizeof(sendBuf) - 1);
     sendBuf[sizeof(sendBuf) - 1] = '\0';
 
+    epoll_event event{};
+    event.events = EPOLLOUT | EPOLLONESHOT | EPOLLRDHUP;
+    event.data.fd = fd;
+    epoll_ctl(epollFd, EPOLL_CTL_MOD, fd, &event);
 }
 
+//---------------------END POST-------------------------
 
-void HttpConnection::handlePut() {
-   
 
-    std::string request(recvBuf);
 
-    size_t pathStart = request.find(" ") + 1;
-    size_t pathEnd = request.find(" ", pathStart);
-    std::string relativePath = request.substr(pathStart, pathEnd - pathStart);
+//------------------PUT-----------------------------
 
+
+void HttpConnection::handlePut(HttpRequest request) {
+
+    
+    std::string relativePath = request.uri;
+
+    
     if (!relativePath.empty() && relativePath[0] == '/') {
         relativePath = relativePath.substr(1);
     }
 
-    std::string filePath = webRoot + relativePath;
+    
+    std::string fileName = std::filesystem::path(relativePath).filename().string();
+    std::string filePath = "web/upload/" + fileName;
 
-    std::cout << "Uploading file to: " << filePath << std::endl;
-
-    if (!std::filesystem::exists(webRoot)) {
-        std::filesystem::create_directories(webRoot);
+    
+    std::filesystem::path parentDir = std::filesystem::path(filePath).parent_path();
+    if (!std::filesystem::exists(parentDir)) {
+        std::filesystem::create_directories(parentDir);
     }
 
-    size_t bodyStart = request.find("\r\n\r\n");
-    if (bodyStart == std::string::npos) {
-        std::cerr << "Error: Missing body in PUT request" << std::endl;
-        strncpy(sendBuf, ERROR, sizeof(sendBuf) - 1);
+    
+    std::string fileData = request.body;
+
+    
+    std::string contentEncoding = request.getHeader("Content-Encoding");
+    if (contentEncoding == "gzip") {
+        
+        fileData = decompressGzip(fileData);
+        if (fileData.empty()) {
+            std::cerr << "Eroare: Decompresia datelor a eșuat." << std::endl;
+            strncpy(sendBuf, ERROR, sizeof(sendBuf) - 1); //bad_request
+            sendBuf[sizeof(sendBuf) - 1] = '\0';
+            return;
+        }
+    } else if (!contentEncoding.empty()) {
+        
+        std::cerr << "Eroare: Content-Encoding nesuportat: " << contentEncoding << std::endl;
+        strncpy(sendBuf, UPLOAD_FAILED, sizeof(sendBuf) - 1); //UNSUPPORTED_MEDIA_TYPE
         sendBuf[sizeof(sendBuf) - 1] = '\0';
         return;
     }
-    std::string fileData = request.substr(bodyStart + 4);
+
 
     std::ofstream outFile(filePath, std::ios::binary);
     if (!outFile) {
-        std::cerr << "Error: Could not open file for writing: " << filePath << std::endl;
-        strncpy(sendBuf, UPLOAD_FAILED, sizeof(sendBuf) - 1);
-        sendBuf[sizeof(sendBuf) - 1] = '\0';
+        std::cerr << "Eroare: Nu s-a putut deschide fișierul pentru scriere: " << filePath << std::endl;
+        strncpy(sendBuf, ERROR, sizeof(sendBuf) - 1); //INTERNAL_SERVER_ERROR
+        sendBuf[sizeof(sendBuf) - 1] = '\0'; 
         return;
     }
     outFile.write(fileData.c_str(), fileData.size());
     outFile.close();
 
-    std::string response = UPLOAD_SUCCESS;
+
+    std::string responseBody = "<html><body><p>Upload reușit!</p></body></html>";
+    std::string response =
+        "HTTP/1.1 200 Created\r\n"
+        "Content-Length: " + std::to_string(responseBody.size()) + "\r\n"
+        "Content-Type: text/html\r\n"
+        "Connection: close\r\n"
+        "\r\n" +
+        responseBody;
+
+
     strncpy(sendBuf, response.c_str(), sizeof(sendBuf) - 1);
     sendBuf[sizeof(sendBuf) - 1] = '\0';
+
+    
+    epoll_event event{};
+    event.events = EPOLLOUT | EPOLLONESHOT | EPOLLRDHUP;
+    event.data.fd = fd;
+    epoll_ctl(epollFd, EPOLL_CTL_MOD, fd, &event);
 }
 
-void HttpConnection::handleDelete() {
+std::string HttpConnection::decompressGzip(const std::string& str) {
+    z_stream zs;
+    memset(&zs, 0, sizeof(zs));
 
- std::cout << "Handling DELETE request" << std::endl;
-
-    std::string page = getRequestedPage();
-    std::string fullPath = webRoot + page;
-
-    if (remove(fullPath.c_str()) == 0) {
-        std::string response = DELETE_SUCCESS;
-        strncpy(sendBuf, response.c_str(), sizeof(sendBuf) - 1);
-        sendBuf[sizeof(sendBuf) - 1] = '\0';
-    } else {
-        strncpy(sendBuf, ERROR, sizeof(sendBuf) - 1);
-        sendBuf[sizeof(sendBuf) - 1] = '\0';
+    if (inflateInit2(&zs, 16 + MAX_WBITS) != Z_OK) {
+        std::cerr << "Eroare: Nu s-a putut inițializa decompresia." << std::endl;
+        return "";
     }
+
+    zs.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(str.data()));
+    zs.avail_in = str.size();
+
+    int ret;
+    char outbuffer[32768];
+    std::string outstring;
+
+    do {
+        zs.next_out = reinterpret_cast<Bytef*>(outbuffer);
+        zs.avail_out = sizeof(outbuffer);
+
+        ret = inflate(&zs, 0);
+
+        if (outstring.size() < zs.total_out) {
+            outstring.append(outbuffer, zs.total_out - outstring.size());
+        }
+    } while (ret == Z_OK);
+
+    inflateEnd(&zs);
+
+    if (ret != Z_STREAM_END) {
+        std::cerr << "Eroare: Decompresia a eșuat cu codul: " << ret << std::endl;
+        return "";
+    }
+
+    return outstring;
 }
 
-void HttpConnection::handleGet() {  //aici nu merge sa descarcam documentele prin https TO DO! 
+//-------------------END PUT-------------------------------
 
-   std::string request(recvBuf);
 
-    size_t pathStart = request.find(" ") + 1;
-    size_t pathEnd = request.find(" ", pathStart);
-    std::string filePath = request.substr(pathStart, pathEnd - pathStart);
+void HttpConnection::handleDelete(HttpRequest request) {
+    
+    std::string relativePath = request.uri;
+
+    
+    if (!relativePath.empty() && relativePath[0] == '/') {
+        relativePath = relativePath.substr(1);
+    }
+
+   
+    std::string fileName = std::filesystem::path(relativePath).filename().string();
+
+    
+    std::string fullPath = "web/upload/" + fileName;
+
+   
+    std::filesystem::path fullPathAbsolute = std::filesystem::absolute(fullPath);
+
+    
+    std::filesystem::path uploadDirAbsolute = std::filesystem::absolute("web/upload");
+    if (fullPathAbsolute.string().find(uploadDirAbsolute.string()) != 0) {
+        std::cerr << "Tentativă de acces neautorizat detectată!" << std::endl;
+        // Răspuns 403 Forbidden
+        const char* forbiddenResponse =
+            "HTTP/1.1 403 Forbidden\r\n"
+            "Content-Length: 0\r\n"
+            "Connection: close\r\n"
+            "\r\n";
+        strncpy(sendBuf, forbiddenResponse, sizeof(sendBuf) - 1);
+        sendBuf[sizeof(sendBuf) - 1] = '\0';
+        return;
+    }
+
+    
+    if (!std::filesystem::exists(fullPathAbsolute)) {
+        std::cerr << "Eroare: Fișierul nu există: " << fullPathAbsolute << std::endl;
+        // Răspuns 404 Not Found
+        const char* notFoundResponse =
+            "HTTP/1.1 404 Not Found\r\n"
+            "Content-Length: 0\r\n"
+            "Connection: close\r\n"
+            "\r\n";
+        strncpy(sendBuf, notFoundResponse, sizeof(sendBuf) - 1);
+        sendBuf[sizeof(sendBuf) - 1] = '\0';
+        return;
+    }
+
+    
+    if (!std::filesystem::is_regular_file(fullPathAbsolute)) {
+        std::cerr << "Eroare: Calea nu este un fișier: " << fullPathAbsolute << std::endl;
+        // Răspuns 400 Bad Request
+        const char* badRequestResponse =
+            "HTTP/1.1 400 Bad Request\r\n"
+            "Content-Length: 0\r\n"
+            "Connection: close\r\n"
+            "\r\n";
+        strncpy(sendBuf, badRequestResponse, sizeof(sendBuf) - 1);
+        sendBuf[sizeof(sendBuf) - 1] = '\0';
+        return;
+    }
+
+    
+    try {
+        std::filesystem::remove(fullPathAbsolute);
+    } catch (const std::filesystem::filesystem_error& e) {
+        std::cerr << "Eroare la ștergerea fișierului: " << e.what() << std::endl;
+        // Răspuns 500 Internal Server Error
+        const char* internalServerErrorResponse =
+            "HTTP/1.1 500 Internal Server Error\r\n"
+            "Content-Length: 0\r\n"
+            "Connection: close\r\n"
+            "\r\n";
+        strncpy(sendBuf, internalServerErrorResponse, sizeof(sendBuf) - 1);
+        sendBuf[sizeof(sendBuf) - 1] = '\0';
+        return;
+    }
+
+    
+    std::string responseBody = "<html><body><p>Fișier șters cu succes!</p></body></html>";
+    std::string response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: " + std::to_string(responseBody.size()) + "\r\n"
+        "Content-Type: text/html\r\n"
+        "Connection: close\r\n"
+        "\r\n" +
+        responseBody;
+
+    
+    strncpy(sendBuf, response.c_str(), sizeof(sendBuf) - 1);
+    sendBuf[sizeof(sendBuf) - 1] = '\0';
+
+    
+    epoll_event event{};
+    event.events = EPOLLOUT | EPOLLONESHOT | EPOLLRDHUP;
+    event.data.fd = fd;
+    epoll_ctl(epollFd, EPOLL_CTL_MOD, fd, &event);
+}
+
+
+void HttpConnection::handleGet(HttpRequest request1) {  //aici nu merge sa descarcam documentele prin https TO DO! 
+
+    std::string request(recvBuf);
+    std::cout<<"REQUEST GET: \n"<<request;
+    std::string uri = request1.uri; // Obține URI din HttpRequest
+    size_t queryPos = uri.find('?');
+    std::string filePath = uri.substr(0, queryPos); 
+    std::string queryString = (queryPos != std::string::npos) ? uri.substr(queryPos + 1) : "";
+
+    std::cout << "DEBUG: URI: " << uri << std::endl;
+    std::cout << "DEBUG: File Path: " << filePath << std::endl;
+    std::cout << "DEBUG: Query String: " << queryString << std::endl;
 
     if (!filePath.empty() && filePath[0] == '/') {
         filePath = filePath.substr(1);
@@ -395,6 +821,10 @@ void HttpConnection::handleGet() {  //aici nu merge sa descarcam documentele pri
     if (filePath.empty()) {
         filePath = "index_test.html"; 
     }
+
+    std::string acceptEncoding = request1.getHeader("Accept-Encoding");
+    bool clientAcceptsGzip = acceptEncoding.find("gzip") != std::string::npos;
+
 
     if (filePath.find("files/") == 0) {
         std::string fileName = filePath.substr(6);
@@ -430,7 +860,12 @@ void HttpConnection::handleGet() {  //aici nu merge sa descarcam documentele pri
     if (filePath.find(".php") != std::string::npos) {
         std::string fullPath = webRoot + filePath;
 
-        
+        setenv("REQUEST_METHOD", "GET", 1);
+        setenv("QUERY_STRING", queryString.c_str(), 1);  
+        setenv("SCRIPT_FILENAME", fullPath.c_str(), 1);  
+        setenv("SERVER_PROTOCOL", "HTTP/1.1", 1);
+        setenv("HTTP_HOST", "localhost", 1); 
+        setenv("REDIRECT_STATUS", "1", 1);
         std::string command = "php-cgi " + fullPath;
         //folosim pipe pentru ca acesta preia iesirea generata de comanda php-cgi. Pipe-ul permite server-ului sa captureze continutul dinamic produs de scriptul php si sa il includa in raspunsul http trimis catre client
         //cand serverul executa un script php folosind php-cgi, iesirea este trimisa la stdout. de aceea folosim un pipe pentru a citi aceasta iesire si pentru a o include in raspunsul http catre client
@@ -450,6 +885,20 @@ void HttpConnection::handleGet() {  //aici nu merge sa descarcam documentele pri
         pclose(pipe);
 
         std::string phpOutput = output.str();
+        size_t headerEnd = phpOutput.find("\r\n\r\n");
+        if (headerEnd != std::string::npos) {
+            phpOutput = phpOutput.substr(headerEnd + 4);
+        }
+
+        std::string responseBodyToSend = phpOutput;
+        std::string contentEncodingHeader;
+
+        if (clientAcceptsGzip) {
+            responseBodyToSend = compressStringGzip(phpOutput);
+            contentEncodingHeader = "Content-Encoding: gzip\r\n";
+        }
+
+       //std::string phpOutput = output.str();
 
         size_t doctypePos = phpOutput.find("<!DOCTYPE html>");
         if (doctypePos != std::string::npos) {

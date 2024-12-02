@@ -5,7 +5,7 @@ Config::Config() = default;
 
 Config::~Config() = default;
 bool Config::isHttpsEnabled = false;
-const std::string Config::webRoot = "./www";
+const std::string Config::webRoot = "./web";
 //the server will use 5 worker threads in its thread pool
 unsigned short Config::threadPoolNumWorkers = 5;
 uint16_t Config::webServerPort=8086;

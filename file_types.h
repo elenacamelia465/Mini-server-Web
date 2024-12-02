@@ -39,7 +39,7 @@ const char* const UPLOAD_FAILED = "HTTP/1.1 500 Internal Server Error\r\nContent
 const char* const UPLOAD_SUCCESS = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<html><head><title>File Uploaded Successfully!</title></head><body><h1>The file has been uploaded successfully to the server!</h1></body></html>";
 const char* const RESOURCE_EXISTING = "HTTP/1.1 204 No Content\r\nContent-Type: text/html\r\n\r\n<html><head><title>The resource is already on the server!</title></head><body><h1>The resource has been updated successfully!</h1></body></html>";
 const char* const PUT_SUCCESS = "HTTP/1.1 201 Created\r\nContent-Type: text/html\r\n\r\n<html><head><title>The resource was not present on the server!</title></head><body><h1>The resource has been created successfully!</h1></body></html>";
-const char* const HEAD_SUCCESS = "HTTP/1.1 200 OK\r\nContent-Length: %ld\r\n\r\n";
+//const char* const HEAD_SUCCESS = "HTTP/1.1 200 OK\r\nContent-Length: %ld\r\n\r\n";
 const char* const LOGIN_SUCCESS = "HTTP/1.1 200 OK\r\n"
                    "Content-Type: text/html\r\n"
                    "Connection: close\r\n\r\n"
@@ -53,6 +53,16 @@ const char* const DELETE_SUCCESS =  "HTTP/1.1 200 OK\r\n"
                                "Connection: close\r\n"
                                "\r\n"
                                "<html><body><h1>File Deleted Successfully</h1></body></html>";
+const char *const RESPONSE_NOT_FOUND = "HTTP/1.1 404 Not Found\r\n"
+            "Content-Length: 0\r\n"
+            "Connection: close\r\n"
+            "\r\n";
+const char * const HEAD_SUCCESS =  "HTTP/1.1 200 OK\r\n"
+            "Content-Length: %ld\r\n"
+            "Content-Type: %s\r\n"
+            "Last-Modified: %s\r\n"
+            "Connection: %s\r\n"
+            "\r\n";
 
 
 #endif // FILE_TYPES_H

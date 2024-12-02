@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Upload File</title>
+</head>
+<body>
+    <h1>Upload File</h1>
+    <form id="uploadForm">
+        <label for="fileInput">Select a file to upload:</label>
+        <input type="file" id="fileInput">
+        <button type="button" onclick="uploadFile()">Upload</button>
+    </form>
+    <script>
+        function uploadFile() {
+            const fileInput = document.getElementById("fileInput");
+            if (!fileInput.files.length) {
+                alert("Please select a file to upload.");
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const xhr = new XMLHttpRequest();
+            xhr.open("PUT", "/upload/" + encodeURIComponent(file.name), true);
+
+            xhr.onload = () => {
+                if (xhr.status === 200) {
+                    alert("File uploaded successfully!");
+                } else {
+                    alert("File upload failed with status: " + xhr.status);
+                }
+            };
+
+            xhr.onerror = () => {
+                alert("An error occurred while uploading the file.");
+            };
+
+            xhr.send(file);
+        }
+    </script>
+</body>
+</html>

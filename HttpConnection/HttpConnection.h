@@ -4,8 +4,11 @@
 #include <sys/socket.h>
 #include <iostream>
 #include <sys/epoll.h>
+#include <unordered_map>
+#include <filesystem>
 #include <cstring>
 #include "../Config/Config.h"
+#include "HttpRequest.h"
 #include <filesystem>
 
 
@@ -36,12 +39,13 @@ class HttpConnection
 
 
         //AGAUDARE POSIBILITATE DE GESTIONARE TIPURI DE CERERI
-        void handleHead();
-        void handlePost();
-        void handlePut();
-        void handleDelete();
+        void handleHead(HttpRequest request);
+        void handlePost(HttpRequest request);
+        void handlePut(HttpRequest request);
+        void handleDelete(HttpRequest request);
         std::string getRequestedPage();
-        void handleGet();
+        void handleGet(HttpRequest request);
+
         void handleWriteLargeResponse(int fileFd);
         const char* get_file_type(char* filename);
 
@@ -53,6 +57,15 @@ class HttpConnection
         void init(const int &epollFd, const int &fd,SSL *ssl ); //initializare cu ssl
         void setEvent(const bool &isReadEvent);
         int getFd() const;
+        std::string getContentType(const std::string& filePath);
+        std::string decompressGzip(const std::string& str);
+        bool isValidUsername(const std::string& username);
+        bool isValidPassword(const std::string& password);
+        bool authenticateUser(const std::string& username, const std::string& password);
+        std::string urlDecode(const std::string& str);
+        std::unordered_map<std::string, std::string> parseFormData(const std::string& body);
+        std::string compressStringGzip(const std::string& str);
+
 };
 
 #endif

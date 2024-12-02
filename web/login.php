@@ -7,7 +7,7 @@
 </head>
 <body>
     <h1>Pagina de Login</h1>
-    <form action="welcome.php" method="POST">
+    <form action="/login" method="POST">
         <label for="username">Username:</label>
         <input type="text" id="username" name="username" required><br><br>
         

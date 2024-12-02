@@ -5,84 +5,29 @@
     <title>Server Web Test</title>
 </head>
 <body>
-    <h1>Bun venit pe serverul web!</h1>
-    <p>Acest site permite testarea operațiunilor de bază ale serverului web.</p>
+    <h1>Welcome to the Web Server!</h1>
+    <p>Use the links below to test various HTTP request functionalities.</p>
 
-    <h2>Operațiuni disponibile</h2>
+    <h2>Operations</h2>
 
-    
-    <h3>Descărcare fișiere</h3>
-    <p>Apasă pe buton pentru a merge la pagina de descărcare:</p>
-    <a href="choose_file.html">
-        <button>Alege tipul de fișier pentru descărcare</button>
-    </a>
+    <h3>Download Files (GET)</h3>
+    <p>Test file downloads:</p>
+    <a href="choose_file.html"><button>Choose File for Download</button></a>
 
-    <h2>Test GET Request</h2>
-    <p>
-        Apasă pe link-ul de mai jos pentru a testa cererea GET:
-    </p>
-    <a href="test.html">Accesează fișierul test.html</a>
+    <h3>Access Static Files (GET)</h3>
+    <p>Test a static HTML file:</p>
+    <a href="test.html">Access test.html</a>
 
-    
-    <h2>Test POST</h2>
-    <h3>Login</h3>
-    <p>Apasă pe buton pentru a accesa pagina de login:</p>
-    <a href="login.php">
-        <button>Login</button>
-    </a>
+    <h3>Submit Form (POST)</h3>
+    <p>Go to the login page to test POST requests:</p>
+    <a href="login.php"><button>Login</button></a>
 
-    <h2>Test PUT</h2>
-    <h2>Upload File</h2>
-<form id="uploadForm">
-    <label for="fileInput">Select a file:</label>
-    <input type="file" id="fileInput">
-    <button type="button" onclick="uploadFile()">Upload</button>
-</form>
+    <h3>Upload File (PUT)</h3>
+    <p>Upload a file to the server:</p>
+    <a href="upload.html"><button>Upload File</button></a>
 
-<script>
-    function uploadFile() {
-        const fileInput = document.getElementById("fileInput");
-        if (!fileInput.files.length) {
-            alert("Please select a file to upload.");
-            return;
-        }
-
-        const file = fileInput.files[0];
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", "/upload/" + encodeURIComponent(file.name), true);
-
-        xhr.onload = () => {
-            if (xhr.status === 200) {
-                alert("File uploaded successfully!");
-            } else {
-                alert("File upload failed with status: " + xhr.status);
-            }
-        };
-
-        xhr.onerror = () => {
-            alert("An error occurred while uploading the file.");
-        };
-
-        xhr.send(file);
-    }
-</script>
-
-    <h2>Test DELETE</h2>
-    <h3>Cerere DELETE</h3>
-    <form id="deleteForm">
-        <label for="deleteFile">Fișier pentru DELETE:</label>
-        <input type="text" id="deleteFile" name="file" placeholder="test.html">
-        <button type="button" onclick="sendDeleteRequest()">Trimite DELETE</button>
-    </form>
-    <script>
-         function sendDeleteRequest() {
-            const file = document.getElementById('deleteFile').value;
-            fetch(file, {
-                method: 'DELETE'
-            }).then(response => response.text())
-            .then(result => alert('Răspuns DELETE: ' + result))
-            .catch(error => console.error('Eroare DELETE:', error));
-        }
-    </script>
+    <h3>Delete File (DELETE)</h3>
+    <p>Send a DELETE request to remove a file:</p>
+    <a href="delete.html"><button>Delete File</button></a>
 </body>
 </html>

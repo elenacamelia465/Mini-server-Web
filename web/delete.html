@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Delete File</title>
+</head>
+<body>
+    <h1>Delete File</h1>
+    <form id="deleteForm">
+        <label for="fileInput">Select a file to delete:</label>
+        <input type="file" id="fileInput">
+        <button type="button" onclick="deleteFile()">Delete</button>
+    </form>
+    <script>
+        function deleteFile() {
+            const fileInput = document.getElementById("fileInput");
+            if (!fileInput.files.length) {
+                alert("Please select a file to delete.");
+                return;
+            }
+
+            const fileName = fileInput.files[0].name;
+            fetch(`/files/${encodeURIComponent(fileName)}`, { method: "DELETE" })
+                .then(response => {
+                    if (response.ok) {
+                        alert("File deleted successfully!");
+                    } else {
+                        alert("File delete failed with status: " + response.status);
+                    }
+                })
+                .catch(error => {
+                    alert("An error occurred: " + error);
+                });
+        }
+    </script>
+</body>
+</html>

@@ -62,6 +62,8 @@
         "typeinfo": "cpp",
         "codecvt": "cpp",
         "iomanip": "cpp",
-        "optional": "cpp"
+        "optional": "cpp",
+        "forward_list": "cpp",
+        "valarray": "cpp"
     }
 }
