@@ -17,7 +17,7 @@ public:
         std::istringstream requestStream(std::string(buffer, size));
         std::string line;
 
-    // Citirea primei linii: metoda, URI și versiunea
+    
     if (!std::getline(requestStream, line) || line.empty()) {
         return false;
     }
@@ -27,19 +27,19 @@ public:
         return false;
     }
 
-    // Transformarea metodei în majuscule pentru consistență
+    
     std::transform(method.begin(), method.end(), method.begin(), ::toupper);
 
-    // Citirea anteturilor
+    
     while (std::getline(requestStream, line) && !line.empty() && line != "\r") {
         auto colonPos = line.find(':');
         if (colonPos == std::string::npos) {
-            continue; // Linie invalidă, o ignorăm
+            continue; 
         }
         std::string headerName = line.substr(0, colonPos);
         std::string headerValue = line.substr(colonPos + 1);
 
-        // Eliminarea spațiilor albe de la început și sfârșit
+        
         headerName.erase(headerName.begin(), std::find_if(headerName.begin(), headerName.end(), [](unsigned char ch) { return !std::isspace(ch); }));
         headerName.erase(std::find_if(headerName.rbegin(), headerName.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(), headerName.end());
         headerValue.erase(headerValue.begin(), std::find_if(headerValue.begin(), headerValue.end(), [](unsigned char ch) { return !std::isspace(ch); }));
@@ -48,7 +48,7 @@ public:
         headers[headerName] = headerValue;
     }
 
-    // Citirea corpului cererii, dacă există
+    
     if (headers.find("Content-Length") != headers.end()) {
         size_t contentLength = std::stoul(headers["Content-Length"]);
         body.resize(contentLength);
@@ -63,6 +63,11 @@ public:
         if (it != headers.end()) {
             return it->second;
         }
-        return ""; // Returnează un șir gol dacă antetul nu este găsit
+        return "";
     }
+
+    bool IsKeepAlive() const {
+        std::string connectionHeader = getHeader("Connection");
+        return connectionHeader == "keep-alive";
+}
 };

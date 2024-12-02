@@ -21,39 +21,6 @@ void HttpConnection::closeConnection() const
     close(fd);
 }
 
-//fucntion pentru incarcarea unui fisier HTML si crearea unui raspuns HTTP
-void HttpConnection::loadHtmlFile(const std::string &filename)
-{
-    std::string fullPath = webRoot + filename;
-    std::cout << "Încerc să deschid fișierul: " << fullPath << std::endl; 
-
-    std::ifstream file(fullPath);
-    if (file)
-    {
-        std::stringstream response;
-        response << "HTTP/1.1 200 OK\r\n"
-                 << "Content-Type: text/html; charset=UTF-8\r\n"
-                 << "Connection: close\r\n"
-                 << "\r\n";
-
-        response << file.rdbuf();
-        strncpy(sendBuf, response.str().c_str(), sizeof(sendBuf) - 1);
-        sendBuf[sizeof(sendBuf) - 1] = '\0';
-    }
-    else
-    {
-        std::cerr << "Eroare: Nu s-a putut deschide fișierul " << fullPath << std::endl;
-        std::string errorResponse = "HTTP/1.1 404 Not Found\r\n"
-                                    "Content-Type: text/html; charset=UTF-8\r\n"
-                                    "Connection: close\r\n"
-                                    "\r\n"
-                                    "<html><body><h1>404 - Page Not Found</h1></body></html>";
-        strncpy(sendBuf, errorResponse.c_str(), sizeof(sendBuf) - 1);
-        sendBuf[sizeof(sendBuf) - 1] = '\0';
-    }
-}
-
-
 
 //MODIFICARE FUNCTIE PENTRU A SUPORTA GESTIONAREA TIPURILOR DE CERERI
 std::string HttpConnection::getRequestedPage() {
@@ -117,13 +84,12 @@ void HttpConnection::handleRead()
 
     HttpRequest request;
     if (!request.parse(recvBuf, recvIndex)) {
-        strncpy(sendBuf, ERROR, sizeof(sendBuf) - 1);
-        sendBuf[sizeof(sendBuf) - 1] = '\0';
+        
+        this->responseHeader = ERROR_HEADER;
+        this->responseBody = ERROR_BODY;
         return;
     }
-    // if (strstr(recvBuf, "\r\n\r\n") != nullptr) {
-    //     recvBuf[recvIndex] = '\0';
-    //     std::string request(recvBuf);
+    
 
         if (request.method == "GET") {
             handleGet(request);
@@ -136,15 +102,19 @@ void HttpConnection::handleRead()
         } else if (request.method == "HEAD") {
             handleHead(request);
         } else {
-            strncpy(sendBuf, ERROR, sizeof(sendBuf) - 1);
-            sendBuf[sizeof(sendBuf) - 1] = '\0';
+           
+            this->responseHeader = ERROR_HEADER;
+            this->responseBody = ERROR_BODY;
         }
+
+        recvIndex = 0;
+        memset(recvBuf, 0, sizeof(recvBuf));
 
         epoll_event event{};
         event.events = EPOLLOUT | EPOLLONESHOT | EPOLLRDHUP;
         event.data.fd = fd;
         epoll_ctl(epollFd, EPOLL_CTL_MOD, fd, &event);
-    //}
+    
 }
 
 void HttpConnection::handleRequest()
@@ -159,39 +129,86 @@ void HttpConnection::handleRequest()
     }
 }
 
-void HttpConnection::handleWrite()
-{
-    size_t len = strlen(sendBuf);
-    sendBuf[len] = '\0';
-    std::cout << "Răspuns trimis la socketFd: " << fd << std::endl;
-    std::cout << sendBuf;
-    ssize_t ret = 0;
-    while (sendIndex < len)
-    {
-        if (ssl) 
-        {
-            ret = SSL_write(ssl, sendBuf + sendIndex, len - sendIndex);
-        } 
-        else 
-        {
-            ret = send(fd, sendBuf + sendIndex, len - sendIndex, 0);
+void HttpConnection::finalizeConnection() {
+    recvIndex = 0;
+    sendIndex = 0; 
+    responseHeader.clear();
+    responseBody.clear();
+    if (isKeepAlive) {
+        epoll_event event{};
+        event.events = EPOLLIN | EPOLLONESHOT | EPOLLRDHUP;
+        event.data.fd = fd;
+        epoll_ctl(epollFd, EPOLL_CTL_MOD, fd, &event);
+    } else {
+        std::unique_lock<std::mutex> locker(Utility::mutex);
+        close(fd);
+        if (ssl) {
+            SSL_shutdown(ssl);
+            SSL_free(ssl);
+            ssl = nullptr;
         }
-        if (ret == -1)
-        {
-            if (errno == EAGAIN || errno == EWOULDBLOCK)
-            {
-                break;
+        locker.unlock();
+    }
+}
+
+
+void HttpConnection::handleWrite() {
+    ssize_t ret = 0;
+    std::cout << "Răspuns Header trimis la socketFd: " << fd << std::endl;
+    std::cout << responseHeader;
+
+    std::cout << "Răspuns Body trimis la socketFd: " << fd << std::endl;
+    std::cout << responseBody;
+
+    
+    while (headerIndex < responseHeader.size())
+    {
+        if (ssl) {
+            ret = SSL_write(ssl, responseHeader.data() + headerIndex, responseHeader.size() - headerIndex);
+        } else {
+            ret = send(fd, responseHeader.data() + headerIndex, responseHeader.size() - headerIndex, 0);
+        }
+        if (ret == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                break; 
             }
         }
         else if (ret > 0)
         {
-            sendIndex += ret;
+            headerIndex += ret;
         }
     }
-    if (sendIndex >= len)
+
+    
+    if (!responseBody.empty())
     {
-        recvIndex = 0;
-        sendIndex = 0;
+   
+        while (bodyIndex < responseBody.size())
+        {
+            if (ssl) {
+                ret = SSL_write(ssl, responseBody.data() + bodyIndex, responseBody.size() - bodyIndex);
+            } else {
+                ret = send(fd, responseBody.data() + bodyIndex, responseBody.size() - bodyIndex, 0);
+            }
+            if (ret == -1) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    break; 
+                }
+            }
+            else if (ret > 0)
+            {
+               bodyIndex += ret;
+            }
+        }
+    }
+    
+    if (headerIndex >= responseHeader.size() && bodyIndex >= responseBody.size()) 
+    {
+        headerIndex = 0;
+        bodyIndex = 0;
+        responseBody.clear(); 
+        responseHeader.clear();
+
         if (isKeepAlive)
         {
             epoll_event event{};
@@ -203,7 +220,7 @@ void HttpConnection::handleWrite()
         {
             std::unique_lock<std::mutex> locker(Utility::mutex);
             close(fd);
-            if (ssl) 
+            if (ssl)
             {
                 SSL_shutdown(ssl);
                 SSL_free(ssl);
@@ -212,7 +229,7 @@ void HttpConnection::handleWrite()
             locker.unlock();
         }
     }
-    else
+    else 
     {
         epoll_event event{};
         event.events = EPOLLOUT | EPOLLONESHOT | EPOLLRDHUP;
@@ -220,6 +237,8 @@ void HttpConnection::handleWrite()
         epoll_ctl(epollFd, EPOLL_CTL_MOD, fd, &event);
     }
 }
+
+
 
 void HttpConnection::init(const int &epollFd, const int &fd, SSL *ssl) //!!!
 {
@@ -242,13 +261,15 @@ int HttpConnection::getFd() const
 //ADAUGARE PENTRU GESTIONAREA TIPURILOR DE CERERI
 void HttpConnection::handleHead(HttpRequest request)
 {
+    
     std::string fullPath = webRoot + request.uri;
 
     struct stat fileStat;
     if(stat(fullPath.c_str(), &fileStat) == -1)
     {
-        strncpy(sendBuf, RESPONSE_NOT_FOUND, sizeof(sendBuf) - 1);
-        sendBuf[sizeof(sendBuf)-1]='\0';
+        this->responseHeader = RESPONSE_NOT_FOUND;
+        this->responseBody.clear();
+       
     }
     else{
         std::string contentType = getContentType(fullPath);
@@ -258,9 +279,9 @@ void HttpConnection::handleHead(HttpRequest request)
         strftime(timeBuf, sizeof(timeBuf), "%a, %d %b %Y %H:%M:%S GMT", &tm);
         const char* connectionState = isKeepAlive ? "keep-alive" : "close";
         
-        snprintf(sendBuf, sizeof(sendBuf),
-                 HEAD_SUCCESS,
-                 fileStat.st_size, contentType.c_str(), timeBuf, connectionState);
+      
+        this->responseHeader = HEAD_SUCCESS_HEADER;
+        this->responseBody.clear();
         
     }
     epoll_event event{};
@@ -456,13 +477,10 @@ void HttpConnection::handlePost(HttpRequest request) {
 
     if (contentType.empty()) {
         
-        const char* badRequestResponse =
-            "HTTP/1.1 400 Bad Request\r\n"
-            "Content-Length: 0\r\n"
-            "Connection: close\r\n"
-            "\r\n";
-        strncpy(sendBuf, badRequestResponse, sizeof(sendBuf) - 1);
-        sendBuf[sizeof(sendBuf) - 1] = '\0';
+        
+        
+        this->responseHeader = badRequestResponse_HEADER;
+        this->responseBody.clear();
         return;
     }
 
@@ -477,6 +495,7 @@ void HttpConnection::handlePost(HttpRequest request) {
 
         bool validUsername = isValidUsername(username);
         bool validPassword = isValidPassword(password);
+        std::string redirectResponse;
 
        
         std::cout << "DEBUG: Valid Username: " << validUsername << ", Valid Password: " << validPassword << std::endl;
@@ -489,23 +508,26 @@ void HttpConnection::handlePost(HttpRequest request) {
                 std::string token = generateSimpleToken(username);
                 saveTokenToFile(token, username);
 
-                std::string redirectResponse =
+                redirectResponse =
                     "HTTP/1.1 303 See Other\r\n"
                     "Location: /welcome.php?token=" + token + "\r\n"
                     "Content-Length: 0\r\n"
                     "Connection: close\r\n"
                     "\r\n";
-
-                strncpy(sendBuf, redirectResponse.c_str(), sizeof(sendBuf) - 1);
-                sendBuf[sizeof(sendBuf) - 1] = '\0';
-                return;
-            } else {
+            } 
+            else {
                 
-                responseBody = "<html><body><p>Login failed. Invalid username or password.</p></body></html>";
+                redirectResponse =
+                        "HTTP/1.1 303 See Other\r\n"
+                        "Location: /login_fail.html\r\n" 
+                        "Content-Length: 0\r\n"
+                        "Connection: close\r\n"
+                        "\r\n";
             }
-        } else {
-            
-            responseBody = "<html><body><p>Invalid input.</p></body></html>";
+           
+            this->responseHeader = redirectResponse;
+            this->responseBody.clear();
+            return;
         }
     } else if (contentType == "application/json") {
         try {
@@ -529,8 +551,9 @@ void HttpConnection::handlePost(HttpRequest request) {
                         "Connection: close\r\n"
                         "\r\n";
 
-                    strncpy(sendBuf, redirectResponse.c_str(), sizeof(sendBuf) - 1);
-                    sendBuf[sizeof(sendBuf) - 1] = '\0';
+                    
+                    this->responseHeader = redirectResponse;
+                    this->responseBody.clear();
                     return;
                 } else {
                     responseBody = "<html><body><p>Login failed. Invalid username or password.</p></body></html>";
@@ -547,34 +570,6 @@ void HttpConnection::handlePost(HttpRequest request) {
         responseBody = "<html><body><p>Unsupported Media Type.</p></body></html>";
     }
 
-   
-    std::string acceptEncoding = request.getHeader("Accept-Encoding");
-    bool clientAcceptsGzip = acceptEncoding.find("gzip") != std::string::npos;
-
-    std::string responseBodyToSend = responseBody;
-    std::string contentEncodingHeader;
-
-    if (clientAcceptsGzip) {
-        responseBodyToSend = compressStringGzip(responseBody);
-        contentEncodingHeader = "Content-Encoding: gzip\r\n";
-    }
-
-    std::string statusCode = "200 OK";
-
-    std::string response =
-        "HTTP/1.1 " + statusCode + "\r\n"
-        "Content-Type: text/html\r\n" +
-        contentEncodingHeader +
-        "Content-Length: " + std::to_string(responseBodyToSend.size()) + "\r\n"
-        "Connection: close\r\n"
-        "\r\n" +
-        responseBodyToSend;
-
-    std::cout << "DEBUG: Response Body Size: " << responseBodyToSend.size() << std::endl;
-    std::cout << "DEBUG: Response Body: " << responseBody << std::endl;
-
-    strncpy(sendBuf, response.c_str(), sizeof(sendBuf) - 1);
-    sendBuf[sizeof(sendBuf) - 1] = '\0';
 
     epoll_event event{};
     event.events = EPOLLOUT | EPOLLONESHOT | EPOLLRDHUP;
@@ -619,15 +614,17 @@ void HttpConnection::handlePut(HttpRequest request) {
         fileData = decompressGzip(fileData);
         if (fileData.empty()) {
             std::cerr << "Eroare: Decompresia datelor a eșuat." << std::endl;
-            strncpy(sendBuf, ERROR, sizeof(sendBuf) - 1); //bad_request
-            sendBuf[sizeof(sendBuf) - 1] = '\0';
+            
+            this->responseHeader = ERROR_HEADER;
+            this->responseBody = ERROR_BODY;
             return;
         }
     } else if (!contentEncoding.empty()) {
         
         std::cerr << "Eroare: Content-Encoding nesuportat: " << contentEncoding << std::endl;
-        strncpy(sendBuf, UPLOAD_FAILED, sizeof(sendBuf) - 1); //UNSUPPORTED_MEDIA_TYPE
-        sendBuf[sizeof(sendBuf) - 1] = '\0';
+       
+        this->responseHeader = UPLOAD_FAILED_HEADER;
+        this->responseBody = UPLOAD_FAILED_BODY;
         return;
     }
 
@@ -635,8 +632,9 @@ void HttpConnection::handlePut(HttpRequest request) {
     std::ofstream outFile(filePath, std::ios::binary);
     if (!outFile) {
         std::cerr << "Eroare: Nu s-a putut deschide fișierul pentru scriere: " << filePath << std::endl;
-        strncpy(sendBuf, ERROR, sizeof(sendBuf) - 1); //INTERNAL_SERVER_ERROR
-        sendBuf[sizeof(sendBuf) - 1] = '\0'; 
+       
+        this->responseHeader = ERROR_HEADER;
+        this->responseBody = ERROR_BODY;
         return;
     }
     outFile.write(fileData.c_str(), fileData.size());
@@ -646,15 +644,16 @@ void HttpConnection::handlePut(HttpRequest request) {
     std::string responseBody = "<html><body><p>Upload reușit!</p></body></html>";
     std::string response =
         "HTTP/1.1 200 Created\r\n"
+        "Cache-Control: no-store, no-cache, must-revalidate\r\n"
         "Content-Length: " + std::to_string(responseBody.size()) + "\r\n"
         "Content-Type: text/html\r\n"
         "Connection: close\r\n"
-        "\r\n" +
-        responseBody;
+        "\r\n";
 
 
-    strncpy(sendBuf, response.c_str(), sizeof(sendBuf) - 1);
-    sendBuf[sizeof(sendBuf) - 1] = '\0';
+    
+    this->responseHeader = response;
+    this->responseBody = responseBody;
 
     
     epoll_event event{};
@@ -706,7 +705,7 @@ std::string HttpConnection::decompressGzip(const std::string& str) {
 void HttpConnection::handleDelete(HttpRequest request) {
     
     std::string relativePath = request.uri;
-
+   
     
     if (!relativePath.empty() && relativePath[0] == '/') {
         relativePath = relativePath.substr(1);
@@ -725,42 +724,24 @@ void HttpConnection::handleDelete(HttpRequest request) {
     std::filesystem::path uploadDirAbsolute = std::filesystem::absolute("web/upload");
     if (fullPathAbsolute.string().find(uploadDirAbsolute.string()) != 0) {
         std::cerr << "Tentativă de acces neautorizat detectată!" << std::endl;
-        // Răspuns 403 Forbidden
-        const char* forbiddenResponse =
-            "HTTP/1.1 403 Forbidden\r\n"
-            "Content-Length: 0\r\n"
-            "Connection: close\r\n"
-            "\r\n";
-        strncpy(sendBuf, forbiddenResponse, sizeof(sendBuf) - 1);
-        sendBuf[sizeof(sendBuf) - 1] = '\0';
+       
+        this->responseHeader = forbiddenResponse_HEADER;
         return;
     }
 
     
     if (!std::filesystem::exists(fullPathAbsolute)) {
         std::cerr << "Eroare: Fișierul nu există: " << fullPathAbsolute << std::endl;
-        // Răspuns 404 Not Found
-        const char* notFoundResponse =
-            "HTTP/1.1 404 Not Found\r\n"
-            "Content-Length: 0\r\n"
-            "Connection: close\r\n"
-            "\r\n";
-        strncpy(sendBuf, notFoundResponse, sizeof(sendBuf) - 1);
-        sendBuf[sizeof(sendBuf) - 1] = '\0';
+       
+        this->responseHeader = notFoundResponse_HEADER;
         return;
     }
 
     
     if (!std::filesystem::is_regular_file(fullPathAbsolute)) {
         std::cerr << "Eroare: Calea nu este un fișier: " << fullPathAbsolute << std::endl;
-        // Răspuns 400 Bad Request
-        const char* badRequestResponse =
-            "HTTP/1.1 400 Bad Request\r\n"
-            "Content-Length: 0\r\n"
-            "Connection: close\r\n"
-            "\r\n";
-        strncpy(sendBuf, badRequestResponse, sizeof(sendBuf) - 1);
-        sendBuf[sizeof(sendBuf) - 1] = '\0';
+        
+        this->responseHeader = badRequestResponse_HEADER;
         return;
     }
 
@@ -769,14 +750,8 @@ void HttpConnection::handleDelete(HttpRequest request) {
         std::filesystem::remove(fullPathAbsolute);
     } catch (const std::filesystem::filesystem_error& e) {
         std::cerr << "Eroare la ștergerea fișierului: " << e.what() << std::endl;
-        // Răspuns 500 Internal Server Error
-        const char* internalServerErrorResponse =
-            "HTTP/1.1 500 Internal Server Error\r\n"
-            "Content-Length: 0\r\n"
-            "Connection: close\r\n"
-            "\r\n";
-        strncpy(sendBuf, internalServerErrorResponse, sizeof(sendBuf) - 1);
-        sendBuf[sizeof(sendBuf) - 1] = '\0';
+       
+        this->responseHeader = internalServerErrorResponse_HEADER;
         return;
     }
 
@@ -784,15 +759,16 @@ void HttpConnection::handleDelete(HttpRequest request) {
     std::string responseBody = "<html><body><p>Fișier șters cu succes!</p></body></html>";
     std::string response =
         "HTTP/1.1 200 OK\r\n"
+        "Cache-Control: no-store, no-cache, must-revalidate\r\n"
         "Content-Length: " + std::to_string(responseBody.size()) + "\r\n"
         "Content-Type: text/html\r\n"
         "Connection: close\r\n"
-        "\r\n" +
-        responseBody;
+        "\r\n";
 
     
-    strncpy(sendBuf, response.c_str(), sizeof(sendBuf) - 1);
-    sendBuf[sizeof(sendBuf) - 1] = '\0';
+   
+    this->responseHeader = response;
+    this->responseBody = responseBody;
 
     
     epoll_event event{};
@@ -801,84 +777,101 @@ void HttpConnection::handleDelete(HttpRequest request) {
     epoll_ctl(epollFd, EPOLL_CTL_MOD, fd, &event);
 }
 
-
-void HttpConnection::handleGet(HttpRequest request1) {  //aici nu merge sa descarcam documentele prin https TO DO! 
-
-    std::string request(recvBuf);
-    std::cout<<"REQUEST GET: \n"<<request;
-    std::string uri = request1.uri; // Obține URI din HttpRequest
+void HttpConnection::handleGet(HttpRequest request) {
+   
+    std::cout << "DEBUG: URI cerut: " << request.uri << std::endl;
+    std::string uri = request.uri.empty() ? "/" : request.uri;
     size_t queryPos = uri.find('?');
-    std::string filePath = uri.substr(0, queryPos); 
+    std::string filePath = uri.substr(0, queryPos);
     std::string queryString = (queryPos != std::string::npos) ? uri.substr(queryPos + 1) : "";
 
-    std::cout << "DEBUG: URI: " << uri << std::endl;
-    std::cout << "DEBUG: File Path: " << filePath << std::endl;
-    std::cout << "DEBUG: Query String: " << queryString << std::endl;
-
-    if (!filePath.empty() && filePath[0] == '/') {
-        filePath = filePath.substr(1);
-    }
-    if (filePath.empty()) {
-        filePath = "index_test.html"; 
+    
+    if (filePath == "/") {
+        filePath = "index_test.html";
     }
 
-    std::string acceptEncoding = request1.getHeader("Accept-Encoding");
+    
+    std::string acceptEncoding = request.getHeader("Accept-Encoding");
     bool clientAcceptsGzip = acceptEncoding.find("gzip") != std::string::npos;
 
-
+   
     if (filePath.find("files/") == 0) {
-        std::string fileName = filePath.substr(6);
-        std::string fullPath = webRoot + "files/" + fileName;
+        std::string fullPath = webRoot + filePath;
 
-        int fileFd = open(fullPath.c_str(), O_RDONLY);
-        if (fileFd == -1) {
-            strncpy(sendBuf, ERROR, sizeof(sendBuf) - 1);
-            sendBuf[sizeof(sendBuf) - 1] = '\0';
+        if (!std::filesystem::exists(fullPath) || !std::filesystem::is_regular_file(fullPath)) {
+           
+            this->responseHeader = ERROR_HEADER;
+            this->responseBody = ERROR_BODY;
             handleWrite();
             return;
         }
 
-        struct stat fileStat;
-        fstat(fileFd, &fileStat);
+        
+        std::ifstream file(fullPath, std::ios::binary);
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        file.close();
 
-        std::string fileType = get_file_type((char *)fileName.c_str());
+        std::string responseBody = buffer.str();
+        std::string responseBodyToSend = responseBody;
+        std::string contentEncodingHeader;
 
-        std::string headers = DOWNLOAD_HEADER;
-
-        send(fd, headers.c_str(), headers.size(), 0);
-
-        char buffer[DATA_LENGTH];
-        ssize_t bytesRead;
-        while ((bytesRead = read(fileFd, buffer, sizeof(buffer))) > 0) {
-            send(fd, buffer, bytesRead, 0);
+       
+        if (clientAcceptsGzip) {
+            try {
+                responseBodyToSend = compressStringGzip(responseBody);
+                contentEncodingHeader = "Content-Encoding: gzip\r\n";
+            } catch (const std::exception &e) {
+                std::cerr << "Error compressing response: " << e.what() << std::endl;
+                responseBodyToSend = responseBody; 
+            }
         }
 
-        close(fileFd); 
+       
+        std::string fileType = getContentType((char *)filePath.c_str());
+
+       
+        std::string response =
+            "HTTP/1.1 200 OK\r\n"
+            "Cache-Control: no-store, no-cache, must-revalidate\r\n"
+            "Content-Length: " + std::to_string(responseBodyToSend.size()) + "\r\n"
+            "Content-Type: " + fileType + "\r\n" +
+            contentEncodingHeader +
+            "Connection: close\r\n"
+            "\r\n";
+
+       
+        this->responseHeader = response;
+        this->responseBody = responseBodyToSend;
+        handleWrite();
         return;
     }
 
+   
     if (filePath.find(".php") != std::string::npos) {
         std::string fullPath = webRoot + filePath;
 
+        
         setenv("REQUEST_METHOD", "GET", 1);
-        setenv("QUERY_STRING", queryString.c_str(), 1);  
-        setenv("SCRIPT_FILENAME", fullPath.c_str(), 1);  
+        setenv("QUERY_STRING", queryString.c_str(), 1);
+        setenv("SCRIPT_FILENAME", fullPath.c_str(), 1);
         setenv("SERVER_PROTOCOL", "HTTP/1.1", 1);
-        setenv("HTTP_HOST", "localhost", 1); 
+        setenv("HTTP_HOST", "localhost", 1);
         setenv("REDIRECT_STATUS", "1", 1);
-        std::string command = "php-cgi " + fullPath;
-        //folosim pipe pentru ca acesta preia iesirea generata de comanda php-cgi. Pipe-ul permite server-ului sa captureze continutul dinamic produs de scriptul php si sa il includa in raspunsul http trimis catre client
-        //cand serverul executa un script php folosind php-cgi, iesirea este trimisa la stdout. de aceea folosim un pipe pentru a citi aceasta iesire si pentru a o include in raspunsul http catre client
-        FILE *pipe = popen(command.c_str(), "r");
+
+       
+        FILE *pipe = popen(("php-cgi " + fullPath).c_str(), "r");
         if (!pipe) {
-            strncpy(sendBuf, ERROR, sizeof(sendBuf) - 1);
-            sendBuf[sizeof(sendBuf) - 1] = '\0';
+            
+           
+            this->responseHeader = internalServerErrorResponse_HEADER;
+            this->responseBody.clear();
             handleWrite();
             return;
         }
 
         std::stringstream output;
-        char buffer[DATA_LENGTH];
+        char buffer[1024];
         while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
             output << buffer;
         }
@@ -887,48 +880,90 @@ void HttpConnection::handleGet(HttpRequest request1) {  //aici nu merge sa desca
         std::string phpOutput = output.str();
         size_t headerEnd = phpOutput.find("\r\n\r\n");
         if (headerEnd != std::string::npos) {
-            phpOutput = phpOutput.substr(headerEnd + 4);
+            phpOutput = phpOutput.substr(headerEnd + 4); 
         }
 
         std::string responseBodyToSend = phpOutput;
         std::string contentEncodingHeader;
 
+      
         if (clientAcceptsGzip) {
-            responseBodyToSend = compressStringGzip(phpOutput);
-            contentEncodingHeader = "Content-Encoding: gzip\r\n";
+            try {
+                responseBodyToSend = compressStringGzip(phpOutput);
+                contentEncodingHeader = "Content-Encoding: gzip\r\n";
+            } catch (const std::exception &e) {
+                std::cerr << "Error compressing PHP output: " << e.what() << std::endl;
+                responseBodyToSend = phpOutput; 
+            }
         }
 
-       //std::string phpOutput = output.str();
+        
+        std::string response =
+            "HTTP/1.1 200 OK\r\n"
+            "Cache-Control: no-store, no-cache, must-revalidate\r\n"
+            "Content-Length: " + std::to_string(responseBodyToSend.size()) + "\r\n"
+            "Content-Type: text/html\r\n" +
+            contentEncodingHeader +
+            "Connection: close\r\n"
+            "\r\n";
 
-        size_t doctypePos = phpOutput.find("<!DOCTYPE html>");
-        if (doctypePos != std::string::npos) {
-            phpOutput = phpOutput.substr(doctypePos); 
-        }
-
-        std::string response = TEXT_HTML + phpOutput;
-
-        strncpy(sendBuf, response.c_str(), sizeof(sendBuf) - 1);
-        sendBuf[sizeof(sendBuf) - 1] = '\0';
+       
+        this->responseHeader = response;
+        this->responseBody = responseBodyToSend;
         handleWrite();
         return;
     }
 
+    
     std::string fullPath = webRoot + filePath;
-    int fileFd = open(fullPath.c_str(), O_RDONLY);
-    if (fileFd == -1) {
-        strncpy(sendBuf, ERROR, sizeof(sendBuf) - 1);
-        sendBuf[sizeof(sendBuf) - 1] = '\0';
+    if (!std::filesystem::exists(fullPath) || !std::filesystem::is_regular_file(fullPath)) {
+        
+       
+        this->responseHeader = ERROR_HEADER;
+        this->responseBody = ERROR_BODY;
         handleWrite();
-    } else {
-        const char *fileType = get_file_type((char *)filePath.c_str());
-        snprintf(sendBuf, sizeof(sendBuf), "%s", fileType);
-        ssize_t headerLength = strlen(fileType);
-        ssize_t bytesRead = read(fileFd, sendBuf + headerLength, sizeof(sendBuf) - headerLength - 1);
-        sendBuf[headerLength + bytesRead] = '\0';
-        handleWrite();
-        close(fileFd);
+        return;
     }
+
+    
+    std::ifstream file(fullPath, std::ios::binary);
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    file.close();
+
+    std::string responseBody = buffer.str();
+    std::string responseBodyToSend = responseBody;
+    std::string contentEncodingHeader;
+
+   
+    if (clientAcceptsGzip) {
+        try {
+            responseBodyToSend = compressStringGzip(responseBody);
+            contentEncodingHeader = "Content-Encoding: gzip\r\n";
+        } catch (const std::exception &e) {
+            std::cerr << "Error compressing response: " << e.what() << std::endl;
+            responseBodyToSend = responseBody; 
+        }
+    }
+
+    std::string fileType = getContentType((char *)filePath.c_str());
+
+    std::string response =
+        "HTTP/1.1 200 OK\r\n"
+        "Cache-Control: no-store, no-cache, must-revalidate\r\n"
+        "Content-Length: " + std::to_string(responseBodyToSend.size()) + "\r\n"
+        "Content-Type: " + fileType + "\r\n" +
+        contentEncodingHeader +
+        "Connection: close\r\n"
+        "\r\n";
+
+   
+    this->responseHeader = response;
+    this->responseBody = responseBodyToSend;
+    handleWrite();
 }
+
+
 
 void HttpConnection::handleWriteLargeResponse(int fileFd) {
     char buffer[DATA_LENGTH];  
@@ -945,27 +980,27 @@ void HttpConnection::handleWriteLargeResponse(int fileFd) {
 }
 
 
-const char* HttpConnection::get_file_type(char* filename)
-{
-    if ( strstr(filename, ".html") || strstr(filename, ".php")) return TEXT_HTML;
-    else if ( strstr(filename, ".jar")) return APP_JS_ARCHIVE;
-    else if ( strstr(filename, ".js")) return TEXT_JS;
-    else if ( strstr(filename, ".ogg")) return APP_OGG;
-    else if ( strstr(filename, ".pdf")) return APP_PDF;
-    else if ( strstr(filename, ".json")) return APP_JSON;
-    else if ( strstr(filename, ".xml")) return APP_XML;
-    else if ( strstr(filename, ".zip")) return APP_ZIP;
-    else if ( strstr(filename, ".mp3")) return AUDIO_MPEG;
-    else if ( strstr(filename, ".wav")) return AUDIO_WAV;
-    else if ( strstr(filename, ".gif")) return IMAGE_GIF;
-    else if ( strstr(filename, ".jpeg") ||  strstr(filename, ".jpg")) return IMAGE_JPEG;
-    else if ( strstr(filename, ".png")) return IMAGE_PNG;
-    else if ( strstr(filename, ".tiff")) return IMAGE_TIFF;
-    else if ( strstr(filename, ".ico")) return IMAGE_VND_MSICON;
-    else if ( strstr(filename, ".json")) return APP_JSON;
-    else if ( strstr(filename, ".xml")) return APP_XML;
-    else if ( strstr(filename, ".mpeg")) return VIDEO_MPEG;
-    else if ( strstr(filename, ".mp4")) return VIDEO_MP4;
-    else if ( strstr(filename, ".webm")) return VIDEO_WEBM;
-    return TEXT_PLAIN;
-}
+// const char* HttpConnection::get_file_type(char* filename)
+// {
+//     if ( strstr(filename, ".html") || strstr(filename, ".php")) return TEXT_HTML;
+//     else if ( strstr(filename, ".jar")) return APP_JS_ARCHIVE;
+//     else if ( strstr(filename, ".js")) return TEXT_JS;
+//     else if ( strstr(filename, ".ogg")) return APP_OGG;
+//     else if ( strstr(filename, ".pdf")) return APP_PDF;
+//     else if ( strstr(filename, ".json")) return APP_JSON;
+//     else if ( strstr(filename, ".xml")) return APP_XML;
+//     else if ( strstr(filename, ".zip")) return APP_ZIP;
+//     else if ( strstr(filename, ".mp3")) return AUDIO_MPEG;
+//     else if ( strstr(filename, ".wav")) return AUDIO_WAV;
+//     else if ( strstr(filename, ".gif")) return IMAGE_GIF;
+//     else if ( strstr(filename, ".jpeg") ||  strstr(filename, ".jpg")) return IMAGE_JPEG;
+//     else if ( strstr(filename, ".png")) return IMAGE_PNG;
+//     else if ( strstr(filename, ".tiff")) return IMAGE_TIFF;
+//     else if ( strstr(filename, ".ico")) return IMAGE_VND_MSICON;
+//     else if ( strstr(filename, ".json")) return APP_JSON;
+//     else if ( strstr(filename, ".xml")) return APP_XML;
+//     else if ( strstr(filename, ".mpeg")) return VIDEO_MPEG;
+//     else if ( strstr(filename, ".mp4")) return VIDEO_MP4;
+//     else if ( strstr(filename, ".webm")) return VIDEO_WEBM;
+//     return TEXT_PLAIN;
+// }

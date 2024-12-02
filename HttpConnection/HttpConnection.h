@@ -29,6 +29,12 @@ class HttpConnection
         char recvBuf[Config::sendRecvBufSize];
         unsigned long recvIndex;
         char sendBuf[Config::sendRecvBufSize];
+
+        std::string responseHeader;
+        std::string responseBody; // Pentru datele binare
+        size_t headerIndex = 0;
+        size_t bodyIndex = 0;
+
         unsigned long sendIndex;
         std::string webRoot;
         void handleRead();
@@ -45,9 +51,10 @@ class HttpConnection
         void handleDelete(HttpRequest request);
         std::string getRequestedPage();
         void handleGet(HttpRequest request);
+        void finalizeConnection(); 
 
         void handleWriteLargeResponse(int fileFd);
-        const char* get_file_type(char* filename);
+        //const char* get_file_type(char* filename);
 
     public:
         HttpConnection();
