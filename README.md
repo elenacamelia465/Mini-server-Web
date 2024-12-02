@@ -89,7 +89,3 @@ Acest proiect oferă implementarea unui **mini server web** în C++, destinat s�
 
 - După conectare, nu trimiteți nicio cerere. Veți observa cum conexiunea este închisă automat după perioada de timeout setată.
 
-Autori
-
-    Std. Sg. Negoescu Elena - Camelia
-    Std. Sg. Rusu Petru - Calin
