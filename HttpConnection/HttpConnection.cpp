@@ -479,12 +479,12 @@ void HttpConnection::handlePost(HttpRequest request) {
     std::string body = request.body;
 
     
-    std::cout << "DEBUG: Request Body: " << body << std::endl;
+    //std::cout << "DEBUG: Request Body: " << body << std::endl;
 
     std::string contentType = request.getHeader("Content-Type");
 
     
-    std::cout << "DEBUG: Content-Type: " << contentType << std::endl;
+    //std::cout << "DEBUG: Content-Type: " << contentType << std::endl;
 
     if (contentType.empty()) {
         
@@ -502,19 +502,19 @@ void HttpConnection::handlePost(HttpRequest request) {
         std::string password = formData["password"];
 
         
-        std::cout << "DEBUG: Username: " << username << ", Password: " << password << std::endl;
+        //std::cout << "DEBUG: Username: " << username << ", Password: " << password << std::endl;
 
         bool validUsername = isValidUsername(username);
         bool validPassword = isValidPassword(password);
         std::string redirectResponse;
 
        
-        std::cout << "DEBUG: Valid Username: " << validUsername << ", Valid Password: " << validPassword << std::endl;
+        //std::cout << "DEBUG: Valid Username: " << validUsername << ", Valid Password: " << validPassword << std::endl;
 
         if (validUsername && validPassword) {
             if (authenticateUser(username, password)) {
                 
-                std::cout << "DEBUG: Authentication successful" << std::endl;
+                //std::cout << "DEBUG: Authentication successful" << std::endl;
 
                 std::string token = generateSimpleToken(username);
                 saveTokenToFile(token, username);
@@ -530,13 +530,25 @@ void HttpConnection::handlePost(HttpRequest request) {
                 
                 redirectResponse =
                         "HTTP/1.1 303 See Other\r\n"
-                        "Location: /login_fail.html\r\n" 
+                        "Location: /login_fail.php\r\n" 
                         "Content-Length: 0\r\n"
                         "Connection: close\r\n"
                         "\r\n";
             }
            
             this->responseHeader = redirectResponse;
+            this->responseBody.clear();
+            return;
+        }
+        else
+        {
+             redirectResponse =
+                        "HTTP/1.1 303 See Other\r\n"
+                        "Location: /login_fail.php\r\n" 
+                        "Content-Length: 0\r\n"
+                        "Connection: close\r\n"
+                        "\r\n";
+             this->responseHeader = redirectResponse;
             this->responseBody.clear();
             return;
         }
@@ -547,7 +559,7 @@ void HttpConnection::handlePost(HttpRequest request) {
             std::string password = jsonData["password"];
 
             
-            std::cout << "DEBUG: JSON Username: " << username << ", JSON Password: " << password << std::endl;
+            //std::cout << "DEBUG: JSON Username: " << username << ", JSON Password: " << password << std::endl;
 
             if (isValidUsername(username) && isValidPassword(password)) {
                 if (authenticateUser(username, password)) {
@@ -790,7 +802,7 @@ void HttpConnection::handleDelete(HttpRequest request) {
 
 void HttpConnection::handleGet(HttpRequest request) {
    
-    std::cout << "DEBUG: URI cerut: " << request.uri << std::endl;
+    //std::cout << "DEBUG: URI cerut: " << request.uri << std::endl;
     std::string uri = request.uri.empty() ? "/" : request.uri;
     size_t queryPos = uri.find('?');
     std::string filePath = uri.substr(0, queryPos);
@@ -806,7 +818,8 @@ void HttpConnection::handleGet(HttpRequest request) {
     bool clientAcceptsGzip = acceptEncoding.find("gzip") != std::string::npos;
 
    
-    if (filePath.find("files/") == 0) {
+    if (filePath.find("/files/") == 0) 
+    {
         std::string fullPath = webRoot + filePath;
 
         if (!std::filesystem::exists(fullPath) || !std::filesystem::is_regular_file(fullPath)) {
@@ -847,6 +860,7 @@ void HttpConnection::handleGet(HttpRequest request) {
             "Cache-Control: no-store, no-cache, must-revalidate\r\n"
             "Content-Length: " + std::to_string(responseBodyToSend.size()) + "\r\n"
             "Content-Type: " + fileType + "\r\n" +
+             "Content-Disposition: attachment; filename=\"" + std::filesystem::path(filePath).filename().string() + "\"\r\n" +
             contentEncodingHeader +
             "Connection: close\r\n"
             "\r\n";
@@ -854,6 +868,7 @@ void HttpConnection::handleGet(HttpRequest request) {
        
         this->responseHeader = response;
         this->responseBody = responseBodyToSend;
+       // std::cout << "DEBUG: Header trimis:\n" << this->responseHeader << std::endl;
         handleWrite();
         return;
     }
@@ -871,6 +886,8 @@ void HttpConnection::handleGet(HttpRequest request) {
         setenv("REDIRECT_STATUS", "1", 1);
 
        
+         //folosim pipe pentru ca acesta preia iesirea generata de comanda php-cgi. Pipe-ul permite server-ului sa captureze continutul dinamic produs de scriptul php si sa il includa in raspunsul http trimis catre client
+        //cand serverul executa un script php folosind php-cgi, iesirea este trimisa la stdout. de aceea folosim un pipe pentru a citi aceasta iesire si pentru a o include in raspunsul http catre client
         FILE *pipe = popen(("php-cgi " + fullPath).c_str(), "r");
         if (!pipe) {
             
