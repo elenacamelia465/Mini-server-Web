@@ -117,17 +117,28 @@ void HttpConnection::handleRead()
     
 }
 
-void HttpConnection::handleRequest()
+void HttpConnection::handleRequest() //demos functionare thread
 {
+    auto start = std::chrono::high_resolution_clock::now(); // Începutul cronometrării
+
     if (isReadEvent)
     {
+        std::cout << "[FD " << getFd() << "] Handling READ event...\n";
         handleRead();
+        std::cout << "[FD " << getFd() << "] READ event completed.\n";
     }
     else
     {
+        std::cout << "[FD " << getFd() << "] Handling WRITE event...\n";
         handleWrite();
+        std::cout << "[FD " << getFd() << "] WRITE event completed.\n";
     }
+
+    auto end = std::chrono::high_resolution_clock::now(); // Sfârșitul cronometrării
+    std::chrono::duration<double> elapsed = end - start;
+    std::cout << "[FD " << getFd() << "] Event processed in " << elapsed.count() << " seconds.\n";
 }
+
 
 void HttpConnection::finalizeConnection() {
     recvIndex = 0;

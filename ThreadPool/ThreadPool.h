@@ -4,6 +4,9 @@
 #include <condition_variable>
 #include <queue>
 #include <thread>
+#include <chrono> 
+#include <iomanip>
+#include <sstream>
 #include "../HttpConnection/HttpConnection.h"
 
 class ThreadPool

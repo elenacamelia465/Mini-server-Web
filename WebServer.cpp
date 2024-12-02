@@ -43,59 +43,84 @@ WebServer::WebServer(const uint16_t &port, const unsigned short &numWorkers, std
 void WebServer::eventLoop() 
 {
     std::cout << "Server start at 127.0.0.1 port: " << port << std::endl;
-    while (!Utility::stop) {
+    while (!Utility::stop) 
+    {
         int num = epoll_wait(epollFd, events, Config::maxEpollWaitEvent, -1);
-        if (num < 0 && errno != EINTR) {
-            std::cerr << "Epoll wait failure.\n";
-            break;
-        }
-        for (int i = 0; i < num; ++i) {
+        if (num < 0)
+         if (errno == EINTR) 
+         {
+                // Întrerupere de la un semnal, continuăm bucla
+                std::cerr <<  " [EPOLL] Interrupted by signal, resuming...\n";
+                continue;
+            } else {
+                // Eroare serioasă
+                std::cerr << " [EPOLL] Wait failure: " << strerror(errno) << "\n";
+                break;
+            }
+        std::cout << num << " evenimente epoll detectate.\n";
+
+        for (int i = 0; i < num; ++i) 
+        {
             int socketFd = events[i].data.fd;
-            if (socketFd == listenFd)
+            if (socketFd == listenFd) 
             {
-                std::cout << "Connection coming." << std::endl;
+                std::cout << "[Epoll Event] Noua conexiune detectată.\n";
                 handleComingConnection();
-            } else if (socketFd == pipeFd[0]) 
+            } 
+            else if (socketFd == pipeFd[0]) 
             {
-                std::cout << "Signal from pipe." << std::endl;
+                std::cout << "[Epoll Event] Semnal primit din pipe.\n";
                 handleSignal();
-            } else if (events[i].events & (EPOLLRDHUP | EPOLLERR | EPOLLHUP))
+            } 
+            else if (events[i].events & (EPOLLRDHUP | EPOLLERR | EPOLLHUP)) 
             {
-                std::cout << "Closing " << socketFd << std::endl;
+                std::cout << "[Epoll Event] Erorare sau închidere pe FD: " << socketFd << "\n";
                 handleCloseOrError(socketFd);
-            } else if (events[i].events & EPOLLIN) 
+            } 
+            else if (events[i].events & EPOLLIN) 
             {
-                std::cout << "Epoll in event from fd: " << socketFd << std::endl;
+                std::cout << "[Epoll Event] Eveniment READ pe FD: " << socketFd << "\n";
                 handleInput(socketFd);
-            } else if (events[i].events & EPOLLOUT) 
+            } 
+            else if (events[i].events & EPOLLOUT) 
             {
-                std::cout << "Epoll out event from fd: " << socketFd << std::endl;
+                std::cout << "[Epoll Event] Eveniment WRITE pe FD: " << socketFd << "\n";
                 handleOutput(socketFd);
             }
         }
     }
     threadPool.quitLoop();
-    std::cout << "Server Stopped." << std::endl;
+    std::cout << "Server Stopped.\n";
 }
+
 
 void WebServer::handleCloseOrError(const int &fd) 
 {
+    std::cout << "[FD " << fd << "] Inchidere sau eroare detectata. Eliminare conexiune.\n";
     Utility::timeList.removeTimer(fd);
     httpConnections[fd].closeConnection();
+     std::cout << "[FD " << fd << "] Conexiune inchisa cu succes.\n";
 }
 
-void WebServer::handleComingConnection() {
+void WebServer::handleComingConnection() 
+{
     sockaddr_in clientAddr{0};
     socklen_t addrLen = sizeof(clientAddr);
-    while (true) {
+    while (true) 
+    {
+        auto start = std::chrono::high_resolution_clock::now();  //start cronometrul
         std::unique_lock<std::mutex> locker(Utility::mutex);
         int clientFd = accept(listenFd, reinterpret_cast<sockaddr *>(&clientAddr), &addrLen);
         locker.unlock();
+         auto end = std::chrono::high_resolution_clock::now();  //stop cronometrul
         if (clientFd == -1) {
             break;
         }
         //preluare ip folosim biblioteca inet.h
-        std::cout << "Noua conexiune de la: "<< inet_ntoa(clientAddr.sin_addr)<< ":"<<ntohs(clientAddr.sin_port)<<std::endl;
+        std::cout<<"Noua conexiune de la: "<<inet_ntoa(clientAddr.sin_addr)<<":"<<ntohs(clientAddr.sin_port)<<" (FD: "<<clientFd<<")\n";
+        std::chrono::duration<double> elapsed = end - start;
+        std::cout<<"Timp acceptare conexiune: "<<elapsed.count()<<" secunde.\n";
+
         if (Config::isHttpsEnabled) 
         {
             SSL *ssl = SSL_new(sslCtx);
@@ -105,6 +130,7 @@ void WebServer::handleComingConnection() {
                 ERR_print_errors_fp(stderr);
                 SSL_free(ssl);
                 close(clientFd);
+                std::cerr<<"Eșec la stabilirea conexiunii HTTPS pentru FD: "<<clientFd<<"\n";
                 continue;
             }
             httpConnections[clientFd].init(epollFd, clientFd, ssl);
@@ -117,44 +143,64 @@ void WebServer::handleComingConnection() {
 
         Utility::timeList.attachTimer(&httpConnections[clientFd]);
         Utility::addFdToEpoll(epollFd, clientFd);
+        std::cout<< "FD "<<clientFd<<" adaugat la epoll pentru evenimente.\n";
     }
 }
 
 void WebServer::handleInput(const int &fd) 
 {
+    std::cout << "[FD " << fd << "] Input event detected.\n";
     httpConnections[fd].setEvent(true);
     Utility::timeList.updateTimer(fd);
     threadPool.addTask(&httpConnections[fd]);
+    std::cout << "[FD " << fd << "] Task adăugat în ThreadPool pentru procesare input.\n";
 }
 
 void WebServer::handleOutput(const int &fd) 
 {
+    std::cout << "[FD " << fd << "] Output event detected.\n";
     httpConnections[fd].setEvent(false);
     Utility::timeList.updateTimer(fd);
     threadPool.addTask(&httpConnections[fd]);
+    std::cout << "[FD " << fd << "] Task adăugat în ThreadPool pentru procesare output.\n";
 }
 
 void WebServer::handleSignal() 
 {
     int buf;
     ssize_t ret = read(pipeFd[0], &buf, sizeof(buf));
-    if (ret == -1) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+    if (ret == -1) 
+    {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) 
+        {
             return;
         }
     }
-    if (buf == SIGALRM) {
-        std::cout << "SIGALRM" << std::endl;
-        Utility::timeList.tick();
-    } else if (buf == SIGINT) {
-        std::cout << "SIGINT" << std::endl;
-        Utility::stop = true;
+    switch (buf) 
+    {
+        case SIGALRM:
+            std::cout << "[Signal] Timeout SIGALRM primit.\n";
+            Utility::timeList.tick();
+            break;
+        case SIGINT:
+            std::cout << "[Signal] SIGINT primit. Oprirea serverului...\n";
+            Utility::stop = true;
+            break;
+        case SIGTERM:
+            std::cout << "[Signal] SIGTERM primit. Oprirea serverului...\n";
+            Utility::stop = true;
+            break;
+        default:
+            std::cout << "[Signal] Semnal necunoscut primit: " << buf << "\n";
     }
 }
+
 WebServer::~WebServer() 
 {
     if (sslCtx) 
     {
         SSL_CTX_free(sslCtx);
+        std::cout << "Contextul SSL a fost eliberat.\n";
     }
+    std::cout << "WebServer destructurat cu succes.\n";
 }

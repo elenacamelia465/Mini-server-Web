@@ -64,6 +64,12 @@
         "iomanip": "cpp",
         "optional": "cpp",
         "forward_list": "cpp",
-        "valarray": "cpp"
+        "valarray": "cpp",
+        "any": "cpp",
+        "charconv": "cpp",
+        "format": "cpp",
+        "ranges": "cpp",
+        "span": "cpp",
+        "variant": "cpp"
     }
 }
