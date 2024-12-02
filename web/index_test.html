@@ -2,32 +2,112 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Server Web Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+        header {
+            background-color: #0078D7;
+            color: white;
+            padding: 20px 0;
+            text-align: center;
+        }
+        header h1 {
+            margin: 0;
+        }
+        main {
+            margin: 20px auto;
+            padding: 20px;
+            max-width: 800px;
+            background: #fff;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+        h2 {
+            color: #0078D7;
+            margin-top: 30px;
+        }
+        p {
+            margin: 10px 0;
+        }
+        a button {
+            background-color: #0078D7;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        a button:hover {
+            background-color: #005bb5;
+        }
+        a {
+            text-decoration: none;
+        }
+        footer {
+            text-align: center;
+            padding: 20px 0;
+            background-color: #333;
+            color: white;
+            margin-top: 30px;
+        }
+        footer a {
+            color: white;
+            text-decoration: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        footer a img {
+            width: 24px;
+            height: 24px;
+            margin-left: 8px;
+        }
+    </style>
 </head>
 <body>
-    <h1>Welcome to the Web Server!</h1>
-    <p>Use the links below to test various HTTP request functionalities.</p>
+    <header>
+        <h1>Welcome to the Web Server!</h1>
+    </header>
+    <main>
+        <p>Use the links below to test various HTTP request functionalities.</p>
 
-    <h2>Operations</h2>
+        <h2>Operations</h2>
 
-    <h3>Download Files (GET)</h3>
-    <p>Test file downloads:</p>
-    <a href="choose_file.html"><button>Choose File for Download</button></a>
+        <h3>Download Files (GET)</h3>
+        <p>Test file downloads:</p>
+        <a href="choose_file.html"><button>Choose File for Download</button></a>
 
-    <h3>Access Static Files (GET)</h3>
-    <p>Test a static HTML file:</p>
-    <a href="test.html">Access test.html</a>
+        <h3>Access Static Files (GET)</h3>
+        <p>Test a static HTML file:</p>
+        <a href="test.html">Access test.html</a>
 
-    <h3>Submit Form (POST)</h3>
-    <p>Go to the login page to test POST requests:</p>
-    <a href="login.php"><button>Login</button></a>
+        <h3>Submit Form (POST)</h3>
+        <p>Go to the login page to test POST requests:</p>
+        <a href="login.php"><button>Login</button></a>
 
-    <h3>Upload File (PUT)</h3>
-    <p>Upload a file to the server:</p>
-    <a href="upload.html"><button>Upload File</button></a>
+        <h3>Upload File (PUT)</h3>
+        <p>Upload a file to the server:</p>
+        <a href="upload.html"><button>Upload File</button></a>
 
-    <h3>Delete File (DELETE)</h3>
-    <p>Send a DELETE request to remove a file:</p>
-    <a href="delete.html"><button>Delete File</button></a>
+        <h3>Delete File (DELETE)</h3>
+        <p>Send a DELETE request to remove a file:</p>
+        <a href="delete.html"><button>Delete File</button></a>
+    </main>
+    <footer>
+        <p>&copy; 2024 Web Server Test Suite</p>
+        <a href="https://github.com/elenacamelia465/Mini-server-Web" target="_blank">
+            View on GitHub
+            <img src="https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png" alt="GitHub Logo">
+        </a>
+    </footer>
 </body>
 </html>

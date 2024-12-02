@@ -2,35 +2,104 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>File Selection</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f9;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        h1 {
+            margin-top: 20px;
+            color: #0078D7;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+            margin: 20px 0;
+            width: 80%;
+            max-width: 600px;
+        }
+        ul li {
+            margin: 10px 0;
+            text-align: center;
+        }
+        ul li a {
+            text-decoration: none;
+            display: inline-block;
+            padding: 10px 20px;
+            border-radius: 5px;
+            background-color: #0078D7;
+            color: white;
+            font-size: 16px;
+            transition: transform 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease;
+        }
+        ul li a:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            background-color: #005bb5;
+        }
+        a.back-home {
+            margin-top: 20px;
+            text-decoration: none;
+            font-size: 16px;
+            color: #0078D7;
+            transition: color 0.3s ease;
+        }
+        a.back-home:hover {
+            color: #005bb5;
+        }
+        /* Animation for clicked link */
+        ul li a:active {
+            animation: bounce 0.3s ease;
+        }
+        @keyframes bounce {
+            0% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(0.95);
+            }
+            100% {
+                transform: scale(1);
+            }
+        }
+    </style>
 </head>
 <body>
     <h1>Select a File to Download</h1>
     <ul>
-        <li><a href="/files/about.html" target="_blank">HTML File</a></li> 
+        <li><a href="/files/about.html" target="_blank">HTML File</a></li>
         <li><a href="/files/data.txt" target="_blank">Text File</a></li>
-        <li><a href="/files/ctf-style.css" target="_blank">CSS File</a></li> 
-        <li><a href="/files/example.js" target="_blank">JavaScript File</a></li> <!--trebuie adaugat-->
-        <li><a href="/files/example.csv" target="_blank">CSV File</a></li> <!--trebuie adaugat-->
-        <li><a href="/files/example.json" target="_blank">JSON File</a></li> <!--trebuie adaugat-->
-        <li><a href="/files/example.xml" target="_blank">XML File</a></li> <!--trebuie adaugat-->
-        <li><a href="/files/Calendar.pdf" target="_blank">PDF File</a></li> 
-        <li><a href="/files/example.doc" target="_blank">Word Document</a></li> <!--trebuie adaugat-->
-        <li><a href="/files/example.zip" target="_blank">ZIP File</a></li> <!--trebuie adaugat-->
-        <li><a href="/files/example.7z" target="_blank">7Z File</a></li> <!--trebuie adaugat-->
-        <li><a href="/files/image1.jpeg" target="_blank">JPEG Image</a></li> 
+        <li><a href="/files/ctf-style.css" target="_blank">CSS File</a></li>
+        <li><a href="/files/example.js" target="_blank">JavaScript File</a></li>
+        <li><a href="/files/example.csv" target="_blank">CSV File</a></li>
+        <li><a href="/files/example.json" target="_blank">JSON File</a></li>
+        <li><a href="/files/example.xml" target="_blank">XML File</a></li>
+        <li><a href="/files/Calendar.pdf" target="_blank">PDF File</a></li>
+        <li><a href="/files/example.doc" target="_blank">Word Document</a></li>
+        <li><a href="/files/example.zip" target="_blank">ZIP File</a></li>
+        <li><a href="/files/example.7z" target="_blank">7Z File</a></li>
+        <li><a href="/files/image1.jpeg" target="_blank">JPEG Image</a></li>
         <li><a href="/files/image2.jpg" target="_blank">JPG Image</a></li>
-        <li><a href="/files/example.gif" target="_blank">GIF Image</a></li> <!--trebuie adaugat-->
-        <li><a href="/files/example.bmp" target="_blank">BMP Image</a></li> <!--trebuie adaugat-->
-        <li><a href="/files/example.webp" target="_blank">WEBP Image</a></li> <!--trebuie adaugat-->
-        <li><a href="/files/example.png" target="_blank">PNG Image</a></li> <!--trebuie adaugat-->
-        <li><a href="/files/example.tiff" target="_blank">TIFF Image</a></li> <!--trebuie adaugat--> 
-        <li><a href="/files/example.mp3" target="_blank">MP3 Audio</a></li> <!--trebuie adaugat-->
-        <li><a href="/files/example.wav" target="_blank">WAV Audio</a></li> <!--trebuie adaugat-->
-        <li><a href="/files/example.mp4" target="_blank">MP4 Video</a></li> <!--trebuie adaugat-->
-        <li><a href="/files/example.mpeg" target="_blank">MPEG Video</a></li> <!--trebuie adaugat-->
-        <li><a href="/files/example.webm" target="_blank">WEBM Video</a></li> <!--trebuie adaugat-->
+        <li><a href="/files/example.gif" target="_blank">GIF Image</a></li>
+        <li><a href="/files/example.bmp" target="_blank">BMP Image</a></li>
+        <li><a href="/files/example.webp" target="_blank">WEBP Image</a></li>
+        <li><a href="/files/example.png" target="_blank">PNG Image</a></li>
+        <li><a href="/files/example.tiff" target="_blank">TIFF Image</a></li>
+        <li><a href="/files/example.mp3" target="_blank">MP3 Audio</a></li>
+        <li><a href="/files/example.wav" target="_blank">WAV Audio</a></li>
+        <li><a href="/files/example.mp4" target="_blank">MP4 Video</a></li>
+        <li><a href="/files/example.mpeg" target="_blank">MPEG Video</a></li>
+        <li><a href="/files/example.webm" target="_blank">WEBM Video</a></li>
     </ul>
-    <a href="index_test.html">Back to Home</a>
+    <a class="back-home" href="index_test.html">Back to Home</a>
 </body>
 </html>
