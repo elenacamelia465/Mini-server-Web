@@ -25,6 +25,7 @@ class Config
         Config();
         virtual ~Config();
         static void parseArgs(int argc, char **argv);
+        static void displayBanner();
 };
 
 #endif

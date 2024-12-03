@@ -4,29 +4,43 @@
 Config::Config() = default;
 
 Config::~Config() = default;
+
 bool Config::isHttpsEnabled = false;
 const std::string Config::webRoot = "./web";
-//the server will use 5 worker threads in its thread pool
 unsigned short Config::threadPoolNumWorkers = 5;
-uint16_t Config::webServerPort=8086;
+uint16_t Config::webServerPort = 8086;
 unsigned short Config::timeoutSecond = Config::defaultTimeoutSecond;
 
-
+void Config::displayBanner() 
+{
+    std::cout << R"(
+   
+    ███╗   ███╗██╗███╗   ██╗██╗   ██╗    ██╗███████╗██████╗ 
+    ████╗ ████║██║████╗  ██║██║   ██║    ██║██╔════╝██╔══██╗
+    ██╔████╔██║██║██╔██╗ ██║██║   ██║ █╗ ██║█████╗  ██████╔╝
+    ██║╚██╔╝██║██║██║╚██╗██║██║   ██║███╗██║██╔══╝  ██╔══██╗ 
+    ██║ ╚═╝ ██║██║██║ ╚████║██║   ╚███╔███╔╝███████╗███████║ 
+    ╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝╚═╝    ╚══╝╚══╝ ╚══════╝╚══════╝   
+    )" << "\n";
+    std::cout << "Welcome to MiniWeb Server\n\n";
+}
 
 void Config::parseArgs(int argc, char **argv) 
 {
+    displayBanner(); // Display the ASCII art banner
+
     static struct option longOptions[] = 
     {
         {"port", required_argument, nullptr, 'p'},
         {"numWorker", required_argument, nullptr, 'n'},
-        {"https", no_argument, nullptr, 's'},  //adaugare optiune HTTPS /.server -s
-        {"timeout", required_argument, nullptr, 't'}  //optioune server pentru timeout , putem sa o testam cu comanda telnet sau openssl pt htts ./server -t <numar>
+        {"https", no_argument, nullptr, 's'}, 
+        {"timeout", required_argument, nullptr, 't'}  
     };
 
     int opt;
     while ((opt = getopt_long(argc, argv, "p:n:st:", longOptions, nullptr)) != -1) 
     {
-         char* endPtr = nullptr;
+        char* endPtr = nullptr;
         switch (opt) 
         {
             case 'p':
@@ -46,8 +60,9 @@ void Config::parseArgs(int argc, char **argv)
                 }
                 break;
             case 's':
-                isHttpsEnabled = true;  //activare modul https mergem pe tls 1.2/1.3
-           case 't':
+                isHttpsEnabled = true;
+                break;
+            case 't':
                 if (!optarg) 
                 {
                     std::cerr << "Lipsă valoare pentru timeout. Se folosește valoarea implicită: "<< defaultTimeoutSecond << " secunde.\n";
@@ -62,6 +77,7 @@ void Config::parseArgs(int argc, char **argv)
                         timeoutSecond = defaultTimeoutSecond;
                     }
                 }
+                break;
             default:
                 break;
         }
