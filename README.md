@@ -62,6 +62,7 @@ Acest proiect oferă implementarea unui **mini server web** în C++, destinat s�
   sudo apt install zlib1g-dev
   sudo apt-get install libcurl4-openssl-dev
   sudo apt-get install nlohmann-json3-dev
+  sudo apt install php-cgi
 
 
 ## Instalare și utilizare
