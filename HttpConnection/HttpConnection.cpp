@@ -303,7 +303,6 @@ void HttpConnection::handleHead(HttpRequest request)
 
 
 std::string HttpConnection::getContentType(const std::string& filePath) {
-    // Mapare între extensii și tipuri MIME
     static const std::unordered_map<std::string, std::string> mimeTypes = {
         {".html", "text/html"},
         {".htm", "text/html"},
@@ -316,8 +315,13 @@ std::string HttpConnection::getContentType(const std::string& filePath) {
         {".gif", "image/gif"},
         {".svg", "image/svg+xml"},
         {".ico", "image/x-icon"},
-        {".pdf", "application/pdf"},
-        {".txt", "text/plain"},
+        {".bmp", "image/bmp"},
+        {".webp", "image/webp"},
+        {".woff", "font/woff"},
+        {".woff2", "font/woff2"},
+        {".ttf", "font/ttf"},
+        {".eot", "application/vnd.ms-fontobject"},
+        {".otf", "font/otf"}
     };
 
     size_t dotPos = filePath.rfind('.');
@@ -328,7 +332,7 @@ std::string HttpConnection::getContentType(const std::string& filePath) {
             return it->second;
         }
     }
-    return "application/octet-stream";
+    return "application/octet-stream"; 
 }
 
 //-----------POST----------------
