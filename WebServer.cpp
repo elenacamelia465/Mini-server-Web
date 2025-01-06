@@ -150,10 +150,27 @@ void WebServer::handleComingConnection()
 void WebServer::handleInput(const int &fd) 
 {
     std::cout << "[FD " << fd << "] Input event detected.\n";
+
+    //det task priority based on the request type
+    int priority = 0;
+    if (httpConnections[fd].isPostRequest()) {
+        std::cout << "[FD " << fd << "] Detected POST request. Assigning high priority.\n";
+        priority = 10;  //mareee prioritate pt POST requests
+    } else if (httpConnections[fd].isDynamicRequest()) {
+        std::cout << "[FD " << fd << "] Detected dynamic request (.php). Assigning priority.\n";
+        priority = 8;   //prioritate pt dynamic .php requests
+    } else {
+        std::cout << "[FD " << fd << "] Regular GET request. Assigning default priority.\n";
+        priority = 0;   //basic priority pt static GET requests
+    }
+
+    //update the connection's state and timer
     httpConnections[fd].setEvent(true);
     Utility::timeList.updateTimer(fd);
-    threadPool.addTask(&httpConnections[fd]);
-    std::cout << "[FD " << fd << "] Task adăugat în ThreadPool pentru procesare input.\n";
+
+    //add the task to the thread pool with the calculated priority
+    threadPool.addTask(&httpConnections[fd], priority);
+    std::cout << "[FD " << fd << "] Task added to ThreadPool with priority: " << priority << "\n";
 }
 
 void WebServer::handleOutput(const int &fd) 

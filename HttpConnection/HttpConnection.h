@@ -72,6 +72,8 @@ class HttpConnection
         std::string urlDecode(const std::string& str);
         std::unordered_map<std::string, std::string> parseFormData(const std::string& body);
         std::string compressStringGzip(const std::string& str);
+        bool isPostRequest() const;
+        bool isDynamicRequest() const;
 
 };
 

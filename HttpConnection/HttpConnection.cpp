@@ -1011,6 +1011,21 @@ void HttpConnection::handleWriteLargeResponse(int fileFd) {
     close(fileFd);
 }
 
+bool HttpConnection::isPostRequest() const {
+    std::string request(recvBuf, recvIndex);  //extract request string from buffer
+    return request.find("POST ") == 0;        // verificare request starts with "POST"
+}
+
+bool HttpConnection::isDynamicRequest() const {
+    std::string request(recvBuf, recvIndex);
+    size_t urlStart = request.find(' ') + 1;
+    size_t urlEnd = request.find(' ', urlStart);
+    if (urlStart == std::string::npos || urlEnd == std::string::npos) {
+        return false;  //malformare request
+    }
+    std::string uri = request.substr(urlStart, urlEnd - urlStart);
+    return uri.find(".php") != std::string::npos;  //verifica ".php" in URI
+}
 
 // const char* HttpConnection::get_file_type(char* filename)
 // {
