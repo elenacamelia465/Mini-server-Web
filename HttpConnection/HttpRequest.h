@@ -70,4 +70,21 @@ public:
         std::string connectionHeader = getHeader("Connection");
         return connectionHeader == "keep-alive";
 }
+    std::string getCookie(const std::string &name) const 
+    {
+        auto it = headers.find("Cookie");
+        if (it != headers.end()) 
+        {
+            std::string cookies = it->second;
+            size_t start = cookies.find(name + "=");
+            if (start != std::string::npos) 
+            {
+                start += name.length() + 1; //move past "name="
+                size_t end = cookies.find(";", start);
+                return cookies.substr(start, end - start);
+            }
+        }
+    return "";  //cookie not found
+    }
+
 };

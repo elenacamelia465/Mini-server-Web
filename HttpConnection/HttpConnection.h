@@ -11,6 +11,11 @@
 #include "HttpRequest.h"
 #include <filesystem>
 
+#include <chrono>
+#include <sstream>
+#include <random>
+// encription cookie 
+
 
 //------ADAUGARE GESTIONARE TIPURI DE CERERI
 #include "../file_types.h"
@@ -74,6 +79,12 @@ class HttpConnection
         std::string compressStringGzip(const std::string& str);
         bool isPostRequest() const;
         bool isDynamicRequest() const;
+        void setCookie(const std::string &name, const std::string &value, const std::string &path = "/", int maxAge = 3600);
+        std::string generateSSID();
+        long long decryptSSID(const std::string &encryptedValue);
+    
+
+
 
 };
 

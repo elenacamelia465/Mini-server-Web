@@ -8,6 +8,9 @@
 #include "../Utility/Utility.h"
 
 
+//cheie encriptare dinamica
+const int ENCRYPTION_KEY = 123456; //!!!!!!!!!!!!
+
 HttpConnection::HttpConnection()
     : epollFd(0), fd(0), isReadEvent(true), sendBuf{}, recvBuf{}, recvIndex{}, sendIndex{}, webRoot("web/")
 {
@@ -182,6 +185,9 @@ void HttpConnection::handleWrite() {
         if (ret == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 break; 
+            }else {
+                std::cerr << "[Error] Failed to send response header on FD: " << fd << " - " << strerror(errno) << std::endl;
+                return;
             }
         }
         else if (ret > 0)
@@ -204,6 +210,9 @@ void HttpConnection::handleWrite() {
             if (ret == -1) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK) {
                     break; 
+                }else {
+                    std::cerr << "[Error] Failed to send response body on FD: " << fd << " - " << strerror(errno) << std::endl;
+                    return;
                 }
             }
             else if (ret > 0)
@@ -246,6 +255,14 @@ void HttpConnection::handleWrite() {
         event.events = EPOLLOUT | EPOLLONESHOT | EPOLLRDHUP;
         event.data.fd = fd;
         epoll_ctl(epollFd, EPOLL_CTL_MOD, fd, &event);
+    }
+
+    // Log any cookies being sent in the response header
+    size_t cookiePos = responseHeader.find("Set-Cookie:");
+    if (cookiePos != std::string::npos) {
+        std::cout << "[Cookie] Sent Set-Cookie header: " 
+                  << responseHeader.substr(cookiePos, responseHeader.find("\r\n", cookiePos) - cookiePos) 
+                  << std::endl;
     }
 }
 
@@ -499,6 +516,19 @@ void HttpConnection::handlePost(HttpRequest request) {
         return;
     }
 
+    //---------------------
+    std::string ssid = request.getCookie("SSID");
+    if (ssid.empty()) 
+    {
+        ssid = generateSSID();  
+        setCookie("SSID", ssid, "/", 7200);            //cookie expires in 2 hours
+        std::cout << "[Cookie] New SSID generated and set during POST: " << ssid << "\n";
+    } else 
+    {
+        std::cout << "[Cookie] Existing session detected during POST with SSID: " << ssid << "\n";
+    }
+    //----------------------
+
     if (contentType == "application/x-www-form-urlencoded") {
         
         std::unordered_map<std::string, std::string> formData = parseFormData(body);
@@ -522,6 +552,10 @@ void HttpConnection::handlePost(HttpRequest request) {
 
                 std::string token = generateSimpleToken(username);
                 saveTokenToFile(token, username);
+
+                //succes cookie
+                setCookie("auth_token", token, "/", 7200);
+
 
                 redirectResponse =
                     "HTTP/1.1 303 See Other\r\n"
@@ -570,6 +604,9 @@ void HttpConnection::handlePost(HttpRequest request) {
                   
                     std::string token = generateSimpleToken(username);
                     saveTokenToFile(token, username);
+
+                     //setare cookie 2 ore dupa locage
+                    setCookie("auth_token", token, "/", 7200);
 
                     std::string redirectResponse =
                         "HTTP/1.1 303 See Other\r\n"
@@ -806,6 +843,17 @@ void HttpConnection::handleDelete(HttpRequest request) {
 
 void HttpConnection::handleGet(HttpRequest request) {
    
+    //---------------
+    std::string ssid = generateSSID();
+    if (ssid.empty()) {
+        //generare nou ssid cookie daca nu exista
+        ssid = generateSSID();  
+        setCookie("SSID", ssid, "/", 3600);            //o ora de expirare pt prajitura
+        std::cout << "[Cookie] New SSID generated and set: " << ssid << "\n";
+    } else {
+        std::cout << "[Cookie] Existing session detected with SSID: " << ssid << "\n";
+    }
+    //----------------
     //std::cout << "DEBUG: URI cerut: " << request.uri << std::endl;
     std::string uri = request.uri.empty() ? "/" : request.uri;
     size_t queryPos = uri.find('?');
@@ -861,6 +909,7 @@ void HttpConnection::handleGet(HttpRequest request) {
        
         std::string response =
             "HTTP/1.1 200 OK\r\n"
+            "Set-Cookie: SSID=" + ssid + "; Path=/; Max-Age=3600; HttpOnly; SameSite=Strict\r\n"
             "Cache-Control: no-store, no-cache, must-revalidate\r\n"
             "Content-Length: " + std::to_string(responseBodyToSend.size()) + "\r\n"
             "Content-Type: " + fileType + "\r\n" +
@@ -932,6 +981,7 @@ void HttpConnection::handleGet(HttpRequest request) {
         
         std::string response =
             "HTTP/1.1 200 OK\r\n"
+            "Set-Cookie: SSID=" + ssid + "; Path=/; Max-Age=3600; HttpOnly; Secure; SameSite=Strict\r\n"
             "Cache-Control: no-store, no-cache, must-revalidate\r\n"
             "Content-Length: " + std::to_string(responseBodyToSend.size()) + "\r\n"
             "Content-Type: text/html\r\n" +
@@ -982,6 +1032,7 @@ void HttpConnection::handleGet(HttpRequest request) {
 
     std::string response =
         "HTTP/1.1 200 OK\r\n"
+        "Set-Cookie: SSID=" + ssid + "; Path=/; Max-Age=3600; HttpOnly; Secure; SameSite=Strict\r\n"
         "Cache-Control: no-store, no-cache, must-revalidate\r\n"
         "Content-Length: " + std::to_string(responseBodyToSend.size()) + "\r\n"
         "Content-Type: " + fileType + "\r\n" +
@@ -1013,7 +1064,7 @@ void HttpConnection::handleWriteLargeResponse(int fileFd) {
 
 bool HttpConnection::isPostRequest() const {
     std::string request(recvBuf, recvIndex);  //extract request string from buffer
-    return request.find("POST ") == 0;        // verificare request starts with "POST"
+    return request.find("POST ") == 0;        //verificare request starts with "POST"
 }
 
 bool HttpConnection::isDynamicRequest() const {
@@ -1026,6 +1077,40 @@ bool HttpConnection::isDynamicRequest() const {
     std::string uri = request.substr(urlStart, urlEnd - urlStart);
     return uri.find(".php") != std::string::npos;  //verifica ".php" in URI
 }
+
+//nebunia de timestap 
+std::string HttpConnection::generateSSID() 
+{
+    //timestamp in secunde
+    auto now = std::chrono::system_clock::now();
+    auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+
+    //genrare nr random ca sa adugan unicitate
+    std::mt19937 rng(static_cast<unsigned int>(timestamp));  //seed RNG cu timestamp =random generator in functie de timestamp 
+    std::uniform_int_distribution<int> dist(1000, 9999);     // iar :") random 4-digit number
+    int randomNum = dist(rng);
+
+    //combinatie de v-day= timestamp + random
+    long long rawValue = timestamp * 10000 + randomNum;
+
+    //encryptare xor
+    long long encryptedValue = rawValue ^ ENCRYPTION_KEY;
+    return std::to_string(encryptedValue);
+}
+
+
+void HttpConnection::setCookie(const std::string &name, const std::string &value, const std::string &path, int maxAge) 
+{
+    std::string cookie = "Set-Cookie: " + name + "=" + value + "; Path=" + path + "; Max-Age=" + std::to_string(maxAge) + "; HttpOnly\r\n; Secure; SameSite=Strict\r\n";
+    responseHeader += cookie;  //cookie la header
+}
+
+long long HttpConnection::decryptSSID(const std::string &encryptedValue) 
+{
+    long long encryptedNum = std::stoll(encryptedValue);
+    return encryptedNum ^ ENCRYPTION_KEY;  //xor cu aceasi cheie
+}
+
 
 // const char* HttpConnection::get_file_type(char* filename)
 // {
