@@ -1,6 +1,6 @@
 # WebServer ThreadPool
 
-Acest proiect implementează un `ThreadPool` care gestionează un grup de threaduri pentru a prelua și procesa cererile HTTP în paralel, ceea ce sporește eficiența aplicației. ThreadPool-ul folosește un model semi-sincron/semi-reactor: thread-ul principal gestionează evenimentele asincron, ascultă socket-urile și adaugă cereri într-o coadă de solicitări. Threadurile de lucru preiau sarcinile din coadă și finalizează procesarea datelor.
+Acest proiect implementează un `ThreadPool` care gestionează un grup de threaduri pentru a prelua și procesa cererile HTTP în paralel, ceea ce sporește eficiența aplicației. ThreadPool-ul folosește un model semi-sincron/semi-reactor: thread-ul principal gestionează evenimentele asincron, ascultă socket-urile și adaugă cereri într-o coadă de solicitări/prioritati, daca e avem o cerere de tip GET php are cea mai mare prioritare fata ce celelate getere. Threadurile de lucru preiau sarcinile din coadă și finalizează procesarea datelor.
 
 ## Funcții principale
 
