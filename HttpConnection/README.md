@@ -9,7 +9,7 @@ Clasa `HttpConnection` este responsabilă pentru gestionarea fiecărei conexiuni
 - **Tratarea metodelor HTTP**: Suportă metode precum `GET`, `POST`, `PUT`, `DELETE` și `HEAD`.
 - **Servirea fișierelor**: Găzduiește fișiere statice (HTML, CSS, JS, imagini) și procesează fișiere PHP prin CGI.
 - **Suport SSL/TLS**: Permite conexiuni securizate utilizând un obiect SSL.
- **SSID-Cookie**: Prezinta cookie pentru ficare conectare, acesta fiind securizat si criptat in functie de timestamp + o functie de generare nr random totul xor<s>.
+- **SSID-Cookie**: Prezinta cookie pentru ficare conectare, acesta fiind securizat si criptat in functie de timestamp + o functie de generare nr random totul xor.
 
 
 ## Clasa HttpRequest
