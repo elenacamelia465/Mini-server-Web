@@ -70,7 +70,7 @@ Acest proiect oferă implementarea unui **mini server web** în C++, destinat s�
 1. **Clonați proiectul**:
    ```bash
    git clone <URL-repo>
-   cd mini-web-server
+   cd Mini-web-Server
 2. **Compilați proiectul**:
     ```bash
     make
